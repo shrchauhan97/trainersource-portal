@@ -25,11 +25,11 @@ graph LR
     end
 
     TS_DSH -->|"One-time codes"| UP_GATE
-    UP_STORE -->|"Sale + attribution"| TS_PAY
-    TS --> SB
-    TS --> VR
+    UP_CHECK -->|"Sale + attribution"| TS_PAY
+    TS_DSH --> SB
+    TS_PUB --> VR
     TS_PAY --> WS
-    UP --> BC
+    UP_CHECK --> BC
 
     style TS fill:#dae8fc,stroke:#6c8ebf
     style UP fill:#d5e8d4,stroke:#82b366

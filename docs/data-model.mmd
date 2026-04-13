@@ -16,9 +16,12 @@ erDiagram
         city string
         niche string
         social_media string "IG/TikTok/etc from application"
+        slug string UK "persistent referral URL segment"
         tier enum "trainer|lead|network_partner"
         status enum "applied|onboarding|active|suspended"
-        commission_rate decimal
+        commission_rate decimal "base rate eg 0.20"
+        reorder_commission_rate decimal "repeat purchase rate eg 0.10"
+        max_clients int "default 100 — cap per trainer"
         wise_account string "payout destination"
         onboarding_completed_at timestamp "null until quiz passed"
         created_at timestamp
@@ -80,6 +83,7 @@ erDiagram
         trainer_id uuid FK
         order_id uuid FK
         payout_id uuid FK "null until batched into a payout"
+        commission_type enum "first_sale|reorder"
         rate_snapshot decimal "% at time of order"
         amount decimal
         status enum "pending|approved|paid"
