@@ -11,16 +11,25 @@
 7. Status moves to `active`, `onboarding_completed_at` is set, commission rate assigned
 8. Trainer can now log in to dashboard and generate access codes
 
-## 2. Customer Purchase
+## 2a. Customer Purchase — Direct Code
 
-1. Trainer generates a one-time access code from their dashboard (7-day expiry)
+1. Trainer generates a one-time access code from their dashboard (7-day expiry, blocked if `max_clients` reached)
 2. Trainer shares code with prospective customer
 3. Customer visits ultimate-peptides.com and enters code at the access gate
 4. Code validated via Supabase -- if valid, customer is created in `customers` table with `trainer_id` attribution
 5. Code status set to `consumed`, customer enters the storefront
 6. Customer browses catalog, selects products, completes ACH checkout (Paychron)
-7. BigCommerce webhook fires -- order saved to `orders` table with trainer attribution, commission created in `commissions` table
-8. ShipStation fulfills order, status updates flow back via webhooks
+7. BigCommerce webhook fires -- order saved to `orders` table with trainer attribution
+8. Commission created: `first_sale` at 20% (base) or `reorder` at 10% (recurring) -- determined by checking if customer has prior orders
+9. ShipStation fulfills order, status updates flow back via webhooks
+
+## 2b. Customer Purchase — Referral Link
+
+1. Trainer shares their referral link (`ultimate-peptides.com/r/{trainer-slug}`) on social media, WhatsApp groups, etc.
+2. Customer clicks link, lands on "Request Access" page (trainer pre-attributed via slug)
+3. Customer enters name + email
+4. System auto-generates a one-time access code tied to that trainer (blocked if `max_clients` reached), sends via email
+5. Customer visits ultimate-peptides.com and enters code -- same gated flow as direct code (steps 3-9 above)
 
 ## 3. Admin Operations
 
