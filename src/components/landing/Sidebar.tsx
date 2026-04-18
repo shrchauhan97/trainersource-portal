@@ -5,16 +5,17 @@ export default function Sidebar() {
   return (
     <aside className="w-full lg:fixed lg:left-0 lg:top-0 lg:bottom-0 lg:w-1/3 bg-clinical-slate text-white flex flex-col p-12 z-50 overflow-y-auto">
       <div className="flex-grow">
-        <div className="flex items-center gap-3 mb-12">
+        <div className="flex items-center gap-4 mb-12">
           <Image
             src="/assets/logo-graphic.png"
             alt="TrainerSource logo"
-            width={48}
-            height={48}
-            className="rounded-sm"
+            width={80}
+            height={80}
+            quality={100}
+            className="rounded-md"
             priority
           />
-          <div className="text-2xl font-bold tracking-tighter text-white font-heading">
+          <div className="text-3xl lg:text-4xl font-bold tracking-tighter text-white font-heading">
             TRAINERSOURCE
           </div>
         </div>

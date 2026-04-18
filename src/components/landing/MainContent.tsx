@@ -19,8 +19,8 @@ export default function MainContent({ showAgeNotice = false }: MainContentProps)
         </div>
       </nav>
 
-      <section id="program-partner" className="bg-white pb-12 px-24 pt-16">
-        <div className="max-w-4xl mx-auto">
+      <section id="program-partner" className="bg-white pb-12 px-12 pt-16">
+        <div className="max-w-6xl mx-auto">
           {showAgeNotice ? (
             <span className="inline-block px-3 py-1 bg-green-100 text-green-900 text-[10px] font-bold tracking-widest uppercase mb-6 rounded-sm">
               TrainerSource Program Partner · Research Use Only · 21+
@@ -33,13 +33,14 @@ export default function MainContent({ showAgeNotice = false }: MainContentProps)
           <h2 className="text-5xl md:text-6xl font-heading font-bold text-slate-900 tracking-tighter mb-12">
             Ultimate Peptides: Confirmed Purity, Biggest Savings
           </h2>
-          <div className="aspect-square md:aspect-[4/3] relative overflow-hidden rounded-lg bg-white">
+          <div className="relative mx-auto w-full max-w-[1024px] aspect-square overflow-hidden rounded-lg bg-white">
             <Image
               src="/assets/ultimate-peptides-lineup.png"
               alt="Ultimate Peptides product vial lineup — BPC-157, TB-500, CJC-1295, Ipamorelin and more under clean laboratory lighting"
-              fill
-              sizes="(min-width: 1024px) 66vw, 100vw"
-              className="object-contain"
+              width={1024}
+              height={1024}
+              quality={100}
+              className="w-full h-full object-cover"
               priority
             />
           </div>
