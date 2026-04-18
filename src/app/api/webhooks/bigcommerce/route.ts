@@ -1,0 +1,261 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
+import { calculateCommission } from '@/lib/commission';
+import type { Customer, Order, Trainer } from '@/lib/types';
+
+export const runtime = 'nodejs';
+
+type BigCommerceWebhookPayload = {
+  data?: {
+    id?: number | string;
+    customer_id?: number | string | null;
+  };
+  scope?: string;
+};
+
+type BigCommerceOrderResponse = {
+  id: number;
+  customer_id: number;
+  status?: string;
+  total_inc_tax?: string | number;
+  payment_method?: string;
+  billing_address?: {
+    country?: string;
+    city?: string;
+  };
+  date_created?: string;
+  date_modified?: string;
+};
+
+type JsonResponseBody = Record<string, unknown>;
+
+function json(body: JsonResponseBody, status = 200) {
+  return Response.json(body, { status });
+}
+
+function createServiceRoleClient() {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase service role configuration');
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+function verifySignature(rawBody: string, signatureHeader: string | null) {
+  const secret = process.env.BIGCOMMERCE_ACCESS_TOKEN;
+
+  if (!secret || !signatureHeader) {
+    return false;
+  }
+
+  const normalizedSignature = signatureHeader.trim();
+  const digest = createHmac('sha256', secret).update(rawBody).digest();
+  const encodings: Array<BufferEncoding> = ['base64', 'hex'];
+
+  for (const encoding of encodings) {
+    try {
+      const provided = Buffer.from(normalizedSignature, encoding);
+      if (provided.length === digest.length && timingSafeEqual(digest, provided)) {
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+}
+
+async function fetchBigCommerceOrder(orderId: string) {
+  const storeHash = process.env.BIGCOMMERCE_STORE_HASH;
+  const accessToken = process.env.BIGCOMMERCE_ACCESS_TOKEN;
+
+  if (!storeHash || !accessToken) {
+    throw new Error('Missing BigCommerce configuration');
+  }
+
+  const response = await fetch(
+    `https://api.bigcommerce.com/stores/${storeHash}/v2/orders/${orderId}`,
+    {
+      headers: {
+        'X-Auth-Token': accessToken,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`BigCommerce order fetch failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<BigCommerceOrderResponse>;
+}
+
+function normalizeOrderStatus(status: string | undefined): Order['status'] {
+  const value = status?.toLowerCase() ?? '';
+
+  if (value.includes('ship')) {
+    return 'shipped';
+  }
+
+  if (value.includes('deliver')) {
+    return 'delivered';
+  }
+
+  if (
+    value.includes('awaiting payment') ||
+    value.includes('incomplete') ||
+    value.includes('pending')
+  ) {
+    return 'pending';
+  }
+
+  return 'paid';
+}
+
+export async function POST(request: Request) {
+  try {
+    const rawBody = await request.text();
+    const signatureHeader = request.headers.get('x-bc-signature');
+
+    if (!rawBody || !verifySignature(rawBody, signatureHeader)) {
+      return json({ error: 'Invalid webhook signature' }, 400);
+    }
+
+    const payload = JSON.parse(rawBody) as BigCommerceWebhookPayload;
+    const scope = payload.scope ?? '';
+    const orderId = payload.data?.id;
+    const bigcommerceCustomerId = payload.data?.customer_id;
+
+    if (!scope || !orderId) {
+      return json({ error: 'Invalid webhook payload' }, 400);
+    }
+
+    if (!scope.includes('order/created')) {
+      return json({ ok: true });
+    }
+
+    const supabase = createServiceRoleClient();
+    const orderDetails = await fetchBigCommerceOrder(String(orderId));
+
+    const customerLookup = String(
+      bigcommerceCustomerId ?? orderDetails.customer_id ?? ''
+    ).trim();
+
+    if (!customerLookup) {
+      return json({ error: 'Missing customer identifier' }, 400);
+    }
+
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('bigcommerce_customer_id', customerLookup)
+      .maybeSingle<Customer>();
+
+    if (customerError) {
+      throw customerError;
+    }
+
+    if (!customer) {
+      return json({ error: 'Customer not found' }, 400);
+    }
+
+    const trainerId = customer.trainer_id;
+
+    const existingOrderQuery = supabase
+      .from('orders')
+      .select('id')
+      .eq('bigcommerce_order_id', String(orderId))
+      .maybeSingle<{ id: string }>();
+
+    const previousOrdersQuery = supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', customer.id);
+
+    const trainerQuery = trainerId
+      ? supabase.from('trainers').select('*').eq('id', trainerId).maybeSingle<Trainer>()
+      : Promise.resolve({ data: null, error: null });
+
+    const [existingOrderResult, previousOrdersResult, trainerResult] = await Promise.all([
+      existingOrderQuery,
+      previousOrdersQuery,
+      trainerQuery,
+    ]);
+
+    if (existingOrderResult.error) {
+      throw existingOrderResult.error;
+    }
+
+    if (existingOrderResult.data) {
+      return json({ ok: true, order_id: existingOrderResult.data.id });
+    }
+
+    if (previousOrdersResult.error) {
+      throw previousOrdersResult.error;
+    }
+
+    if (trainerResult.error) {
+      throw trainerResult.error;
+    }
+
+    const placedAt = orderDetails.date_created ?? new Date().toISOString();
+    const updatedAt = orderDetails.date_modified ?? new Date().toISOString();
+    const total = Number(orderDetails.total_inc_tax ?? 0);
+
+    const { data: createdOrder, error: createOrderError } = await supabase
+      .from('orders')
+      .insert({
+        bigcommerce_order_id: String(orderId),
+        customer_id: customer.id,
+        trainer_id: trainerId,
+        total: Number.isFinite(total) ? total : 0,
+        status: normalizeOrderStatus(orderDetails.status),
+        payment_method: orderDetails.payment_method ?? 'ACH via Paychron',
+        country: orderDetails.billing_address?.country ?? customer.country,
+        city: orderDetails.billing_address?.city ?? customer.city,
+        placed_at: placedAt,
+        updated_at: updatedAt,
+      })
+      .select('*')
+      .single<Order>();
+
+    if (createOrderError) {
+      throw createOrderError;
+    }
+
+    if (trainerId && trainerResult.data) {
+      const isFirstSale = (previousOrdersResult.count ?? 0) === 0;
+      const commission = calculateCommission(createdOrder, trainerResult.data, isFirstSale);
+
+      const { error: createCommissionError } = await supabase.from('commissions').insert({
+        trainer_id: trainerId,
+        order_id: createdOrder.id,
+        commission_type: commission.commissionType,
+        rate_snapshot: commission.rate,
+        amount: commission.amount,
+        status: 'pending',
+      });
+
+      if (createCommissionError) {
+        throw createCommissionError;
+      }
+    }
+
+    return json({ ok: true, order_id: createdOrder.id });
+  } catch (error) {
+    console.error(error);
+    return json({ error: 'Internal server error' }, 500);
+  }
+}

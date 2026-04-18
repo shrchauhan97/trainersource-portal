@@ -1,68 +1,36 @@
-# TrainerSource
-
-The **brain** of the peptide distribution platform. TrainerSource manages the trainer network, commissions, access codes, and admin operations. The storefront ([Ultimate Peptides](https://github.com/shrchauhan97/ultimate-peptides)) is a separate, disposable entity.
-
-## The Octopus Model
-
-| Entity | Role | Domain |
-|--------|------|--------|
-| **TrainerSource** | Brain -- durable asset. Trainer network, commissions, admin, data | trainersource.com |
-| **Ultimate Peptides** | Tentacle -- disposable storefront. Products, checkout, shipping | ultimate-peptides.com |
-
-TrainerSource is the part that survives if the storefront ever needs to be swapped. All trainer relationships, customer attribution, and commission data live here.
-
-## What It Does
-
-- **Trainer recruitment portal** -- public landing page with application form
-- **Onboarding flow** -- training videos + quiz, must pass before generating codes
-- **Trainer dashboard** -- generate one-time access codes, view attributed clients, track commissions
-- **Admin panel** -- separate auth (Tim & Matt are superadmins), full data visibility with region filtering
-- **Commission engine** -- per-order commission calculation, batch payouts via Wise
-- **Access code system** -- one-time codes (7-day expiry) that gate the Ultimate Peptides storefront and attribute customers to the issuing trainer
-
-## Tech Stack
-
-| Layer | Tool |
-|-------|------|
-| Frontend | Google Stitch (Tim built it) -- will be extracted and deployed |
-| Database + Auth | Supabase |
-| Hosting | Vercel |
-| Payouts | Wise API (batch transfers) |
-| Domain | trainersource.com (GoDaddy -> Vercel) |
-
-## Related Repos
-
-| Repo | Purpose |
-|------|---------|
-| [`trainer-source`](https://github.com/shrchauhan97/trainer-source) | Planning docs, KB, diagrams (pre-implementation) |
-| [`ultimate-peptides`](https://github.com/shrchauhan97/ultimate-peptides) | Storefront (BigCommerce + ShipStation) |
-
-## Project Structure
-
-```
-trainersource-app/
-  docs/
-    schema.sql          # Complete Supabase-ready database schema
-    data-model.mmd      # Mermaid ER diagram
-    architecture.mmd    # System architecture diagram
-    user-flows.md       # Trainer, customer, and admin flows
-  .env.example          # Environment variable template
-  .gitignore
-```
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
-> **Status**: Pre-implementation. Supabase project not yet created.
+First, run the development server:
 
-1. Copy `.env.example` to `.env.local` and fill in credentials
-2. Create Supabase project and run `docs/schema.sql`
-3. Point `trainersource.com` DNS to Vercel
-4. Deploy
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
 
-Full requirements: [Notion Build Spec](https://www.notion.so/) (team access required)
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Database
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-7 tables: `admins`, `trainers`, `access_codes`, `customers`, `orders`, `payouts`, `commissions`
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-See [`docs/schema.sql`](docs/schema.sql) for the complete Supabase-ready schema and [`docs/data-model.mmd`](docs/data-model.mmd) for the ER diagram.
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
