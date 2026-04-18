@@ -33,13 +33,13 @@ export default function MainContent({ showAgeNotice = false }: MainContentProps)
           <h2 className="text-5xl md:text-6xl font-heading font-bold text-slate-900 tracking-tighter mb-12">
             Ultimate Peptides: Confirmed Purity, Biggest Savings
           </h2>
-          <div className="aspect-video relative overflow-hidden rounded-lg bg-slate-100">
+          <div className="aspect-square md:aspect-[4/3] relative overflow-hidden rounded-lg bg-white">
             <Image
-              src="/assets/center-hero.png"
-              alt="Ultimate Peptides product vial lineup — Retatrutide, Zepatide, Morelin, MOTS, GHK-CU, DSIP, Amorelin"
+              src="/assets/ultimate-peptides-lineup.png"
+              alt="Ultimate Peptides product vial lineup — BPC-157, TB-500, CJC-1295, Ipamorelin and more under clean laboratory lighting"
               fill
               sizes="(min-width: 1024px) 66vw, 100vw"
-              className="object-contain p-8"
+              className="object-contain"
               priority
             />
           </div>
@@ -131,9 +131,15 @@ export default function MainContent({ showAgeNotice = false }: MainContentProps)
           <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start">
             <div className="space-y-4">
               <p className="text-clinical-slate text-[10px] font-bold uppercase tracking-[0.2em]">Program Partner:</p>
-              <h4 className="font-heading font-bold text-xl text-slate-800 border-b border-slate-200 pb-4 leading-tight min-h-[4rem]">
-                Ultimate<br />Peptides
-              </h4>
+              <div className="border-b border-slate-200 pb-4 min-h-[4rem] flex items-center">
+                <Image
+                  src="/assets/ultimate-peptides-logo.jpg"
+                  alt="Ultimate Peptides"
+                  width={280}
+                  height={118}
+                  className="h-12 w-auto"
+                />
+              </div>
               <ul className="space-y-4 pt-4">
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-hyrox-orange text-sm mt-1">check_circle</span>
