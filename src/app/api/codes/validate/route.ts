@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import {
   createBigCommerceCustomer,
   getBigCommerceCustomerByEmail,
@@ -33,7 +33,7 @@ function splitCustomerName(name: string) {
 }
 
 async function ensureBigCommerceCustomer(params: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
+  supabase: ReturnType<typeof createServiceClient>;
   customerId: string;
   email: string;
   name: string;
@@ -105,7 +105,12 @@ export async function POST(request: Request) {
       return json({ valid: false, reason: 'invalid_payload' }, 400, origin);
     }
 
-    const supabase = await createClient();
+    // Service-role client: this endpoint is called cross-origin from the
+    // storefront with no user session, so the SSR anon-keyed client wouldn't
+    // satisfy RLS once it's enabled (review finding H3). Access control
+    // here is the access-code itself plus the origin allowlist above — the
+    // whole point of the validate step is to gate unauthenticated traffic.
+    const supabase = createServiceClient();
 
     const { data: accessCode, error: accessCodeError } = await supabase
       .from('access_codes')

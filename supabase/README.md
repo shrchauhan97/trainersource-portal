@@ -32,6 +32,13 @@ Copy `.env.example` at the repo root to `.env.local` and fill in:
 Open https://supabase.com/dashboard/project/YOUR-REF/sql/new, paste the contents
 of `schema.sql`, and run. Creates 7 tables + 9 enum types + indexes. Idempotent.
 
+Then paste `rls.sql` and run. Enables RLS on all 7 tables and creates the
+policy set that grants admins full access, trainers scoped access to their
+own rows, and denies all anon access (review finding H3). Also idempotent.
+Service-role traffic (webhooks, /api/codes/validate, /api/session/check,
+the apply flow) bypasses RLS — application-level gating is the security
+boundary for those paths.
+
 ## 4. Seed demo data
 
 ```
@@ -105,16 +112,20 @@ which requires a real inbox to click through.
 | File | Purpose |
 |---|---|
 | `schema.sql` | Idempotent DDL: 7 tables, 9 enums, 13 indexes. Paste into Supabase SQL Editor. |
+| `rls.sql` | Enables RLS and installs the policy set. Apply AFTER `schema.sql`. Idempotent. |
 | `seed.mjs` | Creates the two auth users + admin/trainer/code rows via the admin REST API. |
 | `seed-order.mjs` | One-shot mock-order + commission for walking the payout UI flow without needing live BC. |
 
 ## Notes
 
-- No RLS policies are applied. Fred's portal assumes everything goes through
-  the service-role-keyed webhook handler or the anon-keyed validate endpoint
-  (which does its own auth via access codes). `requireAdmin()` / `requireTrainer()`
-  checks at the action level are the current access control. Locking down with
-  RLS is a follow-up (review finding H3).
+- RLS is enabled via `rls.sql`. Policies: admins can do anything; trainers
+  can read/update their own rows plus read their own related data
+  (codes/customers/orders/commissions/payouts); anon has no access at all.
+  Server-side endpoints that need to act unauthenticated — the webhook
+  handler, `/api/codes/validate`, `/api/session/check`, and the apply flow
+  — go through the service-role client (bypasses RLS). Application-level
+  gating (`requireAdmin()` / `requireTrainer()`) remains the primary access
+  control on server actions; RLS is defense-in-depth against anon-key leaks.
 - The validate endpoint CORS allowlist is in `ACCESS_GATE_ALLOWED_ORIGINS`
   (comma-separated). For local dev against the storefront, include
   `http://localhost:3000` alongside `https://ultimate-peptides.com`.

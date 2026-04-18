@@ -1,10 +1,16 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { COMMISSION_FIRST_SALE, COMMISSION_REORDER, MAX_CLIENTS_DEFAULT } from '@/lib/constants';
 
+// Service role: this action runs BEFORE the applicant has a login (they
+// don't have an auth session yet), so the user-scoped SSR client would
+// hit RLS as `anon` and be denied. Fine to use service role here because
+// the form fields are the only inputs and the resulting row is always
+// inserted with status='applied', which requires admin action to move
+// forward.
 export async function submitApplication(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const name = formData.get('name') as string;
   const email = formData.get('email') as string;
