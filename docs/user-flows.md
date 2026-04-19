@@ -21,7 +21,7 @@
 6. Customer browses catalog, selects products, completes ACH checkout (Paychron)
 7. BigCommerce webhook fires -- order saved to `orders` table with trainer attribution
 8. Commission created: `first_sale` at 20% (base) or `reorder` at 10% (recurring) -- determined by checking if customer has prior orders
-9. ShipStation fulfills order, status updates flow back via webhooks
+9. Easy Ship (BC-native app) fulfills order; shipment status lives in BC — portal can query the BC Orders API by `bigcommerce_order_id` if we want to surface tracking
 
 ## 2b. Customer Purchase — Referral Link
 
