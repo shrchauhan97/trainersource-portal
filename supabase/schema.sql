@@ -221,3 +221,50 @@ as $$
   order by c.embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- source-type-filtered top-K with creator boost for ranking
+-- source_types: array of source_type values to restrict the query (intent-biased retrieval)
+-- creator_boost: jsonb map from source_creator → boost multiplier (e.g. '{"smashrx": 1.15}')
+-- similarity is clamped to >= 0 before applying boost to avoid sign-flipping on near-orthogonal
+-- vectors (cosine similarity can go slightly negative for unrelated content)
+-- mode_filter: must be 'customer' or 'partner' — unknown values fall through to customer scope
+create or replace function match_chunks_biased(
+  query_embedding vector(768),
+  source_types text[],
+  creator_boost jsonb default '{}',
+  match_count int default 4,
+  mode_filter text default 'customer'
+)
+returns table (
+  id uuid,
+  source_type text,
+  source_creator text,
+  source_url text,
+  source_title text,
+  show_attribution boolean,
+  text text,
+  tags text[],
+  sku_hints text[],
+  similarity float
+)
+language sql stable parallel safe
+as $$
+  select
+    c.id, c.source_type, c.source_creator, c.source_url, c.source_title,
+    c.show_attribution, c.text, c.tags, c.sku_hints,
+    greatest(1 - (c.embedding <=> query_embedding), 0) *
+      coalesce((creator_boost ->> c.source_creator)::float, 1.0)
+      as similarity
+  from public.kb_chunks c
+  where
+    c.source_type = any(source_types)
+    and case when mode_filter = 'partner'
+      then c.mode in ('all', 'partner_only')
+      else c.mode in ('all', 'customer_only')
+    end
+  order by
+    greatest(1 - (c.embedding <=> query_embedding), 0) *
+      coalesce((creator_boost ->> c.source_creator)::float, 1.0)
+    desc
+  limit match_count;
+$$;
