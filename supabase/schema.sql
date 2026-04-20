@@ -184,3 +184,40 @@ create index if not exists kb_chunks_creator_idx
   on public.kb_chunks (source_creator) where source_creator is not null;
 create index if not exists kb_chunks_sku_hints_idx
   on public.kb_chunks using gin (sku_hints);
+
+-- mode-filtered top-K nearest-neighbor search
+create or replace function match_chunks(
+  query_embedding vector(768),
+  match_count int default 6,
+  mode_filter text default 'customer'  -- 'customer' | 'partner'
+)
+returns table (
+  id uuid,
+  source_type text,
+  source_creator text,
+  source_url text,
+  source_title text,
+  show_attribution boolean,
+  text text,
+  tags text[],
+  sku_hints text[],
+  similarity float
+)
+language plpgsql
+as $$
+begin
+  return query
+  select
+    c.id, c.source_type, c.source_creator, c.source_url, c.source_title,
+    c.show_attribution, c.text, c.tags, c.sku_hints,
+    1 - (c.embedding <=> query_embedding) as similarity
+  from public.kb_chunks c
+  where
+    case when mode_filter = 'partner'
+      then c.mode in ('all', 'partner_only')
+      else c.mode in ('all', 'customer_only')
+    end
+  order by c.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
