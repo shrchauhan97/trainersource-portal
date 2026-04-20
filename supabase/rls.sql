@@ -158,3 +158,11 @@ CREATE POLICY "payouts_admin_all" ON public.payouts FOR ALL TO authenticated
 -- role key, which bypasses RLS entirely.
 ALTER TABLE public.bot_user_acknowledgments ENABLE ROW LEVEL SECURITY;
 --------------------------------------------------------------------------------
+
+-- === kb_chunks RLS ===
+ALTER TABLE kb_chunks ENABLE ROW LEVEL SECURITY;
+
+-- Service role bypass only — no anon/authenticated access
+-- (bot uses service role key; portal does not query this table)
+CREATE POLICY kb_chunks_service_role ON kb_chunks
+  FOR ALL TO service_role USING (true) WITH CHECK (true);

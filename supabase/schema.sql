@@ -148,3 +148,39 @@ create table if not exists public.bot_user_acknowledgments (
   acknowledgment_version text        not null,
   acknowledged_at        timestamptz not null default now()
 );
+
+-- === kb_chunks (Peptide Concierge v2 RAG) ===
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS kb_chunks (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type     text NOT NULL,
+  source_creator  text,
+  source_url      text,
+  source_title    text NOT NULL,
+  attribute       boolean NOT NULL DEFAULT true,
+  mode            text NOT NULL DEFAULT 'all',
+  parent_doc_id   text NOT NULL,
+  chunk_position  int NOT NULL,
+  text            text NOT NULL,
+  tags            text[] NOT NULL DEFAULT '{}',
+  sku_hints       text[] NOT NULL DEFAULT '{}',
+  embedding       vector(768) NOT NULL,
+  ingested_at     timestamptz NOT NULL DEFAULT now(),
+  content_hash    text NOT NULL UNIQUE,
+  CONSTRAINT kb_chunks_mode_check CHECK (mode IN ('all', 'partner_only', 'customer_only')),
+  CONSTRAINT kb_chunks_source_type_check CHECK (
+    source_type IN ('matt_kb', 'yt_huberman', 'yt_smashrx', 'yt_creator',
+                    'yt_howto', 'pubmed', 'l30d', 'ts_manual')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS kb_chunks_embedding_idx
+  ON kb_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+CREATE INDEX IF NOT EXISTS kb_chunks_source_mode_idx
+  ON kb_chunks (source_type, mode);
+CREATE INDEX IF NOT EXISTS kb_chunks_creator_idx
+  ON kb_chunks (source_creator) WHERE source_creator IS NOT NULL;
+CREATE INDEX IF NOT EXISTS kb_chunks_sku_hints_idx
+  ON kb_chunks USING gin (sku_hints);
