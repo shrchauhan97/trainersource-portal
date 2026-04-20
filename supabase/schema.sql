@@ -186,10 +186,13 @@ create index if not exists kb_chunks_sku_hints_idx
   on public.kb_chunks using gin (sku_hints);
 
 -- mode-filtered top-K nearest-neighbor search
+-- mode_filter must be 'customer' or 'partner'; any other value falls through to customer
+-- scope (the safer default — customer scope excludes partner_only content). Callers
+-- from bot code pass typed 'customer' | 'partner' values.
 create or replace function match_chunks(
   query_embedding vector(768),
   match_count int default 6,
-  mode_filter text default 'customer'  -- 'customer' | 'partner'
+  mode_filter text default 'customer'
 )
 returns table (
   id uuid,
@@ -203,10 +206,8 @@ returns table (
   sku_hints text[],
   similarity float
 )
-language plpgsql
+language sql stable parallel safe
 as $$
-begin
-  return query
   select
     c.id, c.source_type, c.source_creator, c.source_url, c.source_title,
     c.show_attribution, c.text, c.tags, c.sku_hints,
@@ -219,5 +220,4 @@ begin
     end
   order by c.embedding <=> query_embedding
   limit match_count;
-end;
 $$;
