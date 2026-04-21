@@ -300,3 +300,32 @@ CREATE TABLE IF NOT EXISTS coa_missing_events (
 
 CREATE INDEX IF NOT EXISTS coa_missing_events_sku_idx ON coa_missing_events (sku);
 CREATE INDEX IF NOT EXISTS coa_missing_events_requested_at_idx ON coa_missing_events (requested_at DESC);
+
+-- === Partner Mode (Peptide Concierge v2 P4) ===
+
+-- Telegram <-> trainer identity link, populated by the Login Widget callback
+-- or by the bot-initiated Login URL flow. One row per Telegram user.
+CREATE TABLE IF NOT EXISTS trainer_telegram_links (
+    telegram_user_id BIGINT PRIMARY KEY,
+    trainer_id       UUID NOT NULL REFERENCES trainers(id),
+    linked_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    linked_via       TEXT NOT NULL,
+    CONSTRAINT trainer_telegram_links_linked_via_check
+        CHECK (linked_via IN ('widget', 'login_url', 'manual_admin'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_trainer_telegram_links_trainer
+    ON trainer_telegram_links (trainer_id);
+
+-- Distinguish portal-issued vs bot-issued access codes, and carry a label
+-- for the /mycodes readout. Additive, backward-compatible — existing rows
+-- default to issued_via='portal' and NULL label.
+ALTER TABLE access_codes
+    ADD COLUMN IF NOT EXISTS issued_via TEXT NOT NULL DEFAULT 'portal'
+        CHECK (issued_via IN ('portal', 'bot', 'manual_admin'));
+
+ALTER TABLE access_codes
+    ADD COLUMN IF NOT EXISTS label TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_access_codes_trainer_issued
+    ON access_codes (trainer_id, issued_via);

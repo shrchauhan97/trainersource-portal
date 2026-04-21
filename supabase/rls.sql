@@ -176,3 +176,16 @@ CREATE POLICY coa_cache_service_role ON coa_cache
 ALTER TABLE coa_missing_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY coa_missing_events_service_role ON coa_missing_events
   FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- === Partner Mode RLS ===
+
+-- trainer_telegram_links: service-role bypass only.
+-- The bot (service role) reads it, the Verify-Login endpoint (service role)
+-- writes it. Portal users never query it directly.
+ALTER TABLE trainer_telegram_links ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY trainer_telegram_links_service_role
+    ON trainer_telegram_links
+    FOR ALL TO service_role
+    USING (true)
+    WITH CHECK (true);
