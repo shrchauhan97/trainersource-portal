@@ -166,3 +166,13 @@ alter table public.kb_chunks enable row level security;
 -- (bot uses service role key; portal does not query this table)
 create policy kb_chunks_service_role on public.kb_chunks
   for all to service_role using (true) with check (true);
+
+-- === coa_cache RLS ===
+ALTER TABLE coa_cache ENABLE ROW LEVEL SECURITY;
+CREATE POLICY coa_cache_service_role ON coa_cache
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- === coa_missing_events RLS ===
+ALTER TABLE coa_missing_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY coa_missing_events_service_role ON coa_missing_events
+  FOR ALL TO service_role USING (true) WITH CHECK (true);

@@ -268,3 +268,35 @@ as $$
     desc
   limit match_count;
 $$;
+
+-- === coa_cache (Peptide Concierge v2 — P3 COA delivery) ===
+-- v1: single lot per SKU. PK = sku, so re-ingest overwrites previous lot.
+-- To support multi-lot history, promote PK to (sku, lot_number) and
+-- return the most recent by default with an inline "view older" button.
+
+CREATE TABLE IF NOT EXISTS coa_cache (
+  sku              text PRIMARY KEY,
+  drive_file_id    text NOT NULL,
+  filename         text NOT NULL,
+  lot_number       text,
+  issued_date      date,
+  purity_pct       numeric,
+  telegram_file_id text,
+  cached_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS coa_cache_lot_idx ON coa_cache (lot_number);
+
+-- Logs every time a user asks for a COA we don't have on file.
+-- Ops reviews weekly; lets Tim know which SKUs to prioritize.
+CREATE TABLE IF NOT EXISTS coa_missing_events (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku               text NOT NULL,
+  telegram_user_id  bigint NOT NULL,
+  telegram_username text,
+  requested_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS coa_missing_events_sku_idx ON coa_missing_events (sku);
+CREATE INDEX IF NOT EXISTS coa_missing_events_requested_at_idx ON coa_missing_events (requested_at DESC);
