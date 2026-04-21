@@ -68,3 +68,65 @@ export function verifyLoginWidget(
     auth_date: payload.auth_date,
   };
 }
+
+/** User object extracted from Mini App initData (`user=<JSON>` param). */
+export interface TelegramMiniAppUser {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+  photo_url?: string;
+  is_premium?: boolean;
+}
+
+/**
+ * Verify a Telegram Mini App `initData` string per
+ * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ *
+ * Note: the secret key derivation differs from Login Widget — Mini Apps use
+ * HMAC-SHA256("WebAppData", botToken) whereas Login Widget uses
+ * sha256(botToken). Keep them separate on purpose.
+ *
+ * Returns the parsed user object on success, or null if the hash is missing,
+ * tampered, produced with the wrong token, or the user field can't be parsed.
+ */
+export function verifyTelegramWebApp(
+  initData: string,
+  botToken: string,
+): TelegramMiniAppUser | null {
+  if (!initData || !botToken) return null;
+
+  const parsed = new URLSearchParams(initData);
+  const hash = parsed.get('hash');
+  if (!hash) return null;
+
+  parsed.delete('hash');
+
+  const dataCheckString = [...parsed.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n');
+
+  const secretKey = crypto
+    .createHmac('sha256', 'WebAppData')
+    .update(botToken)
+    .digest();
+  const computed = crypto
+    .createHmac('sha256', secretKey)
+    .update(dataCheckString)
+    .digest('hex');
+
+  const a = Buffer.from(computed, 'hex');
+  const b = Buffer.from(hash, 'hex');
+  if (a.length !== b.length) return null;
+  if (!crypto.timingSafeEqual(a, b)) return null;
+
+  const userJson = parsed.get('user');
+  if (!userJson) return null;
+  try {
+    return JSON.parse(userJson) as TelegramMiniAppUser;
+  } catch {
+    return null;
+  }
+}
