@@ -9,9 +9,9 @@ import {
 } from '@/lib/reconstitution';
 import SyringeVisualization from './SyringeVisualization';
 
-// Channel-level link as a v1 placeholder. Swap to the curated reconstitution
-// walkthrough once Plan 1 Task 17 seeds the creator how-to library.
-const SMASHRX_RECONSTITUTION_VIDEO = 'https://www.youtube.com/@SmashRx';
+// Neutral how-to link — channel-level placeholder until a curated walkthrough
+// is seeded (Plan 1 Task 17). No creator attribution in the label.
+const RECONSTITUTION_VIDEO_URL = 'https://www.youtube.com/@SmashRx';
 
 const DEFAULT_SKU = 'UP-BPC157';
 const DEFAULT_WATER_ML = 2;
@@ -148,12 +148,12 @@ export default function CalculatorPage() {
       </section>
 
       <a
-        href={SMASHRX_RECONSTITUTION_VIDEO}
+        href={RECONSTITUTION_VIDEO_URL}
         target="_blank"
         rel="noreferrer noopener"
         className="flex items-center justify-center gap-2 rounded-xl bg-[var(--tg-btn,#3b82f6)] px-4 py-3 text-base font-medium text-[var(--tg-btn-fg,#ffffff)]"
       >
-        Watch SmashRx&apos;s reconstitution walkthrough
+        How to reconstitute a vial
       </a>
 
       <p className="mt-2 text-center text-[11px] text-[var(--tg-hint,#94a3b8)]">
