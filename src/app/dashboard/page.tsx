@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTrainerClients, getTrainerCodes, getTrainerCommissions } from './actions';
 import { DashboardTable } from '@/components/dashboard/DashboardTable';
+import { ConnectTelegramBanner } from '@/components/ConnectTelegramBanner';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -47,6 +48,7 @@ export default async function DashboardOverviewPage() {
 
   return (
     <div className="space-y-6">
+      <ConnectTelegramBanner />
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="rounded-[1.75rem] border border-[#2D4F67]/10 bg-white p-6 shadow-[0_24px_60px_rgba(45,79,103,0.10)]">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D4F67]/58">Overview</p>
