@@ -14,7 +14,23 @@ export async function ConnectTelegramBanner() {
     .select('id')
     .eq('email', user.email)
     .maybeSingle<{ id: string }>();
-  if (!trainer) return null;
+  if (!trainer) {
+    // Logged-in user is an admin (or some other role) with no trainer row.
+    // Don't silently hide — show a breadcrumb so they're not stuck wondering
+    // what to do after the /iamtrainer magic-link lands them here.
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        You're logged in as <code>{user.email}</code>, which isn't a trainer
+        account. The partner flow (<code>/mycode</code>,{' '}
+        <code>/issuecode</code>, <code>/earnings</code>) is trainer-only.{' '}
+        <span className="font-semibold">
+          To preview it, sign out and sign back in with your <code>+trainer</code>
+          {' '}alias
+        </span>
+        {' '}(e.g. <code>{user.email.replace('@', '+trainer@')}</code>).
+      </div>
+    );
+  }
 
   const { data: link } = await supabase
     .from('trainer_telegram_links')
