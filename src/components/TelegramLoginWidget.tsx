@@ -40,7 +40,13 @@ export function TelegramLoginWidget({
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
     script.setAttribute('data-telegram-login', botUsername);
     script.setAttribute('data-size', size);
-    script.setAttribute('data-auth-url', authCallbackUrl);
+    // Telegram widget is flaky with relative URLs — iframe's postMessage
+    // handler sometimes resolves against oauth.telegram.org instead of the
+    // parent origin. Force absolute URL to eliminate the ambiguity.
+    const absoluteUrl = authCallbackUrl.startsWith('http')
+      ? authCallbackUrl
+      : `${window.location.origin}${authCallbackUrl}`;
+    script.setAttribute('data-auth-url', absoluteUrl);
     script.setAttribute('data-request-access', 'write');
     if (requestPhoto) script.setAttribute('data-userpic', 'true');
 

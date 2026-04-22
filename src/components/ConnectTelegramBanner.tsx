@@ -1,5 +1,6 @@
 // Server component — queries trainer link status, renders widget when unlinked.
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { TelegramLoginWidget } from './TelegramLoginWidget';
 
 export async function ConnectTelegramBanner() {
@@ -32,7 +33,11 @@ export async function ConnectTelegramBanner() {
     );
   }
 
-  const { data: link } = await supabase
+  // trainer_telegram_links is service-role-only by RLS design (bot reads it,
+  // verify-login writes it). Use the service client here since the banner
+  // is a server component and only needs link presence/absence, not content.
+  const service = createServiceClient();
+  const { data: link } = await service
     .from('trainer_telegram_links')
     .select('telegram_user_id')
     .eq('trainer_id', trainer.id)
