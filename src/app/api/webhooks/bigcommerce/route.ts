@@ -310,7 +310,7 @@ export async function POST(request: Request) {
         trainer_id: trainerId,
         total: Number.isFinite(total) ? total : 0,
         status: normalizedStatus,
-        payment_method: orderDetails.payment_method ?? 'ACH via Paychron',
+        payment_method: orderDetails.payment_method ?? 'ACH',
         country: orderDetails.billing_address?.country ?? customer.country,
         city: orderDetails.billing_address?.city ?? customer.city,
         placed_at: placedAt,
