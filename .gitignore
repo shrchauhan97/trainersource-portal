@@ -43,3 +43,6 @@ next-env.d.ts
 
 # QA/screenshot output from scripts/qa-prod.mjs + scripts/shot-*.mjs
 docs/stitch/
+
+# Worktrees for parallel feature development
+.worktrees/

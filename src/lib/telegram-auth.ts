@@ -130,3 +130,18 @@ export function verifyTelegramWebApp(
     return null;
   }
 }
+
+/**
+ * Extract the auth_date (unix seconds) from a Mini App initData string.
+ * Used by Mini App route handlers to enforce a staleness window beyond
+ * what verifyTelegramWebApp checks (it only verifies HMAC, not freshness).
+ * Returns null if the field is missing or unparseable.
+ */
+export function getAuthDateSeconds(initData: string): number | null {
+  if (!initData) return null;
+  const parsed = new URLSearchParams(initData);
+  const raw = parsed.get('auth_date');
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
