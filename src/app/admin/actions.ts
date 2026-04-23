@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { getCurrentAdminEmail } from '@/lib/auth';
+import { deleteBcCustomer } from '@/lib/bc-rest-client';
 import {
   isRemovableReason,
   requireSuperadmin,
@@ -591,6 +592,21 @@ export async function removeCustomer(form: FormData): Promise<void> {
         await supabase.from('bot_user_acknowledgments').delete().in('telegram_user_id', tgIds);
       }
       await supabase.from('bc_customer_links').delete().eq('bc_customer_id', bcId);
+
+      // Delete BC storefront customer account — last step so Supabase cleanup
+      // is committed even if BC is down. Supabase is source of truth; the gate
+      // enforces removed status regardless of whether the BC account is gone.
+      try {
+        const result = await deleteBcCustomer(bcId);
+        if (!result.deleted && result.reason === 'has-orders') {
+          console.warn(
+            `[removeCustomer] BC customer ${bcId} has orders — storefront account retained, Supabase status=removed stops checkout access via the gate.`,
+          );
+        }
+      } catch (err) {
+        // Log but don't fail — Supabase is source of truth. Admin can retry BC delete manually from BC admin.
+        console.error('[removeCustomer] BC delete failed, continuing:', err);
+      }
     }
   }
 

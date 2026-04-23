@@ -127,3 +127,38 @@ export async function getProductImages(
   );
   return result?.data ?? [];
 }
+
+/**
+ * Deletes a BigCommerce storefront customer account by id.
+ * No-op safe: logs and swallows if the account doesn't exist (404).
+ * Throws on other error statuses — caller decides whether to continue.
+ *
+ * Uses fetch directly (not bcFetch) so we can inspect non-2xx statuses
+ * like 404 (already gone) and 422 (has orders — BC blocks delete) without
+ * bcFetch's throw-on-non-ok behavior.
+ */
+export async function deleteBcCustomer(
+  bcCustomerId: number,
+): Promise<{ deleted: boolean; reason?: string }> {
+  const { storeHash, accessToken } = getConfig();
+  const url = `https://api.bigcommerce.com/stores/${storeHash}/v3/customers?id:in=${bcCustomerId}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'X-Auth-Token': accessToken,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (res.status === 204) return { deleted: true };
+  if (res.status === 404) return { deleted: false, reason: 'not-found' };
+  if (res.status === 422) return { deleted: false, reason: 'has-orders' }; // BC blocks when customer has orders
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`BC customer delete failed: ${res.status} ${body}`);
+  }
+  return { deleted: true };
+}

@@ -11,11 +11,15 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
+vi.mock('@/lib/bc-rest-client', () => ({
+  deleteBcCustomer: vi.fn().mockResolvedValue({ deleted: true }),
+}));
 
 import { suspendCustomer } from '@/app/admin/actions';
 import { removeCustomer } from '@/app/admin/actions';
 import { suspendTrainer, removeTrainer } from '@/app/admin/actions';
 import { restoreCustomer, restoreTrainer } from '@/app/admin/actions';
+import { deleteBcCustomer } from '@/lib/bc-rest-client';
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -257,5 +261,34 @@ describe('restoreTrainer', () => {
     await restoreTrainer(form);
     expect(calls.some((c) => c.table === 'trainers' && c.op === 'update')).toBe(true);
     expect(calls.some((c) => c.table === 'lifecycle_events' && c.op === 'insert')).toBe(true);
+  });
+});
+
+describe('removeCustomer BC cascade', () => {
+  it('calls deleteBcCustomer when bc_customer_id is present', async () => {
+    const calls: Array<{ table: string; op: string }> = [];
+    mockFrom.mockImplementation((table: string) => {
+      const chain: any = {
+        select: () => chain, eq: () => chain, in: () => chain,
+        update: () => { calls.push({ table, op: 'update' }); return chain; },
+        delete: () => { calls.push({ table, op: 'delete' }); return chain; },
+        insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
+        maybeSingle: () => Promise.resolve({
+          data: table === 'admins'
+            ? { id: 'a1', email: 'x', name: 'X', role: 'superadmin' }
+            : { id: 'c1', status: 'active', bigcommerce_customer_id: '99', access_code_id: 'ac1' },
+          error: null,
+        }),
+      };
+      return chain;
+    });
+
+    const form = new FormData();
+    form.set('customerId', 'c1');
+    form.set('reasonCategory', 'fraud');
+    form.set('confirm', 'REMOVE');
+
+    await removeCustomer(form);
+    expect(deleteBcCustomer).toHaveBeenCalledWith(99);
   });
 });
