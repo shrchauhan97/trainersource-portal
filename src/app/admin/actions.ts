@@ -3,7 +3,15 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
+import { getCurrentAdminEmail } from '@/lib/auth';
+import {
+  isRemovableReason,
+  requireSuperadmin,
+  writeLifecycleEvent,
+  type ReasonCategory,
+} from '@/lib/lifecycle';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { PayoutStatus, TrainerStatus } from '@/lib/types';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -535,4 +543,49 @@ export async function generateCodes(formData: FormData): Promise<void> {
   }
 
   revalidateAdminPages();
+}
+
+function readReason(form: FormData): { category: ReasonCategory; note?: string } {
+  const category = String(form.get('reasonCategory') ?? '');
+  if (!isRemovableReason(category)) throw new Error('invalid-reason');
+  const note = String(form.get('reasonNote') ?? '').trim() || undefined;
+  return { category, note };
+}
+
+export async function suspendCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before, error: readErr } = await supabase
+    .from('customers')
+    .select('id, status')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (readErr) throw new Error(`customer lookup failed: ${readErr.message}`);
+  if (!before) throw new Error('customer-not-found');
+  if (before.status === 'suspended') return; // idempotent
+
+  const { error: updErr } = await supabase
+    .from('customers')
+    .update({ status: 'suspended' })
+    .eq('id', customerId);
+  if (updErr) throw new Error(`customer suspend failed: ${updErr.message}`);
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer',
+    entityId: customerId,
+    fromStatus: before.status,
+    toStatus: 'suspended',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
 }

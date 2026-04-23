@@ -62,3 +62,9 @@ export async function getUserRole(email?: string | null): Promise<AppUserRole> {
 
   return 'unauthorized';
 }
+
+export async function getCurrentAdminEmail(): Promise<string> {
+  const user = await getCurrentUser();
+  if (!user?.email) throw new Error('not-authenticated');
+  return user.email.toLowerCase();
+}
