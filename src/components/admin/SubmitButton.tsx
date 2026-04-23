@@ -9,18 +9,20 @@ export function SubmitButton({
   pendingLabel,
   variant = 'primary',
   className,
+  disabled,
 }: {
   label: string;
   pendingLabel?: string;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   className?: string;
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
 
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || Boolean(disabled)}
       className={cn(
         'inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.22em] transition disabled:cursor-not-allowed disabled:opacity-60',
         variant === 'primary' &&
