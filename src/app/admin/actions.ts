@@ -724,3 +724,51 @@ export async function removeTrainer(form: FormData): Promise<void> {
   revalidatePath(`/admin/trainers/${trainerId}`);
   revalidatePath('/admin/trainers');
 }
+
+export async function restoreCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('customers').select('id, status').eq('id', customerId).maybeSingle();
+  if (!before) throw new Error('customer-not-found');
+  if (before.status !== 'suspended') throw new Error('not-restorable');
+
+  await supabase.from('customers').update({ status: 'active' }).eq('id', customerId);
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer', entityId: customerId,
+    fromStatus: 'suspended', toStatus: 'active',
+    actorAdminId: admin.id, reasonCategory: category, reasonNote: note,
+  });
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+}
+
+export async function restoreTrainer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const trainerId = String(form.get('trainerId') ?? '');
+  if (!trainerId) throw new Error('trainer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('trainers').select('id, status').eq('id', trainerId).maybeSingle();
+  if (!before) throw new Error('trainer-not-found');
+  if (before.status !== 'suspended') throw new Error('not-restorable');
+
+  await supabase.from('trainers').update({ status: 'active' }).eq('id', trainerId);
+  await writeLifecycleEvent(supabase, {
+    entityType: 'trainer', entityId: trainerId,
+    fromStatus: 'suspended', toStatus: 'active',
+    actorAdminId: admin.id, reasonCategory: category, reasonNote: note,
+  });
+  revalidatePath(`/admin/trainers/${trainerId}`);
+  revalidatePath('/admin/trainers');
+}

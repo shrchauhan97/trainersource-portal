@@ -15,6 +15,7 @@ vi.mock('next/cache', () => ({
 import { suspendCustomer } from '@/app/admin/actions';
 import { removeCustomer } from '@/app/admin/actions';
 import { suspendTrainer, removeTrainer } from '@/app/admin/actions';
+import { restoreCustomer, restoreTrainer } from '@/app/admin/actions';
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -184,6 +185,77 @@ describe('removeTrainer', () => {
     await removeTrainer(form);
     expect(calls.some((c) => c.table === 'trainers' && c.op === 'update')).toBe(true);
     expect(calls.some((c) => c.table === 'access_codes' && c.op === 'update')).toBe(true);
+    expect(calls.some((c) => c.table === 'lifecycle_events' && c.op === 'insert')).toBe(true);
+  });
+});
+
+describe('restoreCustomer', () => {
+  it('flips status back to active and logs event', async () => {
+    const calls: Array<{ table: string; op: string }> = [];
+    mockFrom.mockImplementation((table: string) => {
+      const chain: any = {
+        select: () => chain, eq: () => chain,
+        update: () => { calls.push({ table, op: 'update' }); return chain; },
+        insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
+        maybeSingle: () => Promise.resolve({
+          data: table === 'admins'
+            ? { id: 'a1', email: 'x', name: 'X', role: 'superadmin' }
+            : { id: 'c1', status: 'suspended' },
+          error: null,
+        }),
+      };
+      return chain;
+    });
+    const form = new FormData();
+    form.set('customerId', 'c1');
+    form.set('reasonCategory', 'other');
+    await restoreCustomer(form);
+    expect(calls.some((c) => c.table === 'customers' && c.op === 'update')).toBe(true);
+    expect(calls.some((c) => c.table === 'lifecycle_events' && c.op === 'insert')).toBe(true);
+  });
+
+  it('refuses to restore a removed customer (only suspended → active)', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      const chain: any = {
+        select: () => chain, eq: () => chain,
+        maybeSingle: () => Promise.resolve({
+          data: table === 'admins'
+            ? { id: 'a1', email: 'x', name: 'X', role: 'superadmin' }
+            : { id: 'c1', status: 'removed' },
+          error: null,
+        }),
+      };
+      return chain;
+    });
+    const form = new FormData();
+    form.set('customerId', 'c1');
+    form.set('reasonCategory', 'other');
+    await expect(restoreCustomer(form)).rejects.toThrow('not-restorable');
+  });
+});
+
+describe('restoreTrainer', () => {
+  it('flips trainer status back to active', async () => {
+    const calls: Array<{ table: string; op: string }> = [];
+    mockFrom.mockImplementation((table: string) => {
+      const chain: any = {
+        select: () => chain, eq: () => chain,
+        update: () => { calls.push({ table, op: 'update' }); return chain; },
+        insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
+        maybeSingle: () => Promise.resolve({
+          data: table === 'admins'
+            ? { id: 'a1', email: 'x', name: 'X', role: 'superadmin' }
+            : { id: 't1', status: 'suspended' },
+          error: null,
+        }),
+      };
+      return chain;
+    });
+    const form = new FormData();
+    form.set('trainerId', 't1');
+    form.set('reasonCategory', 'churn');
+    await restoreTrainer(form);
+    expect(calls.some((c) => c.table === 'trainers' && c.op === 'update')).toBe(true);
     expect(calls.some((c) => c.table === 'lifecycle_events' && c.op === 'insert')).toBe(true);
   });
 });
