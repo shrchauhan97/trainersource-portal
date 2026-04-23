@@ -589,3 +589,67 @@ export async function suspendCustomer(form: FormData): Promise<void> {
   revalidatePath(`/admin/customers/${customerId}`);
   revalidatePath('/admin/customers');
 }
+
+export async function removeCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const confirm = String(form.get('confirm') ?? '');
+  if (confirm !== 'REMOVE') throw new Error('confirm-mismatch');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('customers')
+    .select('id, status, bigcommerce_customer_id, access_code_id')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (!before) throw new Error('customer-not-found');
+
+  // Soft-delete — keep the row, flip status. Preserves FK integrity with orders.
+  await supabase
+    .from('customers')
+    .update({ status: 'removed' })
+    .eq('id', customerId);
+
+  // Revoke their access code (if any)
+  if (before.access_code_id) {
+    await supabase
+      .from('access_codes')
+      .update({ status: 'revoked' })
+      .eq('id', before.access_code_id);
+  }
+
+  // Cascade bot identity tables — keyed by bc_customer_id
+  if (before.bigcommerce_customer_id) {
+    const bcId = Number(before.bigcommerce_customer_id);
+    if (!Number.isNaN(bcId)) {
+      // Find linked telegram user ids so we can also wipe their acknowledgment
+      const { data: links } = await supabase
+        .from('bc_customer_links')
+        .select('telegram_user_id')
+        .eq('bc_customer_id', bcId);
+      const tgIds = (links ?? []).map((l: { telegram_user_id: number }) => l.telegram_user_id);
+      if (tgIds.length > 0) {
+        await supabase.from('bot_user_acknowledgments').delete().in('telegram_user_id', tgIds);
+      }
+      await supabase.from('bc_customer_links').delete().eq('bc_customer_id', bcId);
+    }
+  }
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer',
+    entityId: customerId,
+    fromStatus: before.status,
+    toStatus: 'removed',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+    metadata: { bc_customer_id: before.bigcommerce_customer_id },
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+}
