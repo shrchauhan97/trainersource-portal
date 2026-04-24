@@ -149,7 +149,17 @@ function LauncherInner() {
 
   const closeAndChat = useCallback(() => {
     tapHaptic();
-    getTg()?.close();
+    // Route to the bot chat explicitly instead of just closing — if the user
+    // launched the Mini App from another chat's menu button, tg.close() drops
+    // them back where they were. openTelegramLink forces them into the
+    // concierge chat so the CTA actually lands them at the prompt.
+    const tg = getTg();
+    const url = `https://t.me/${BOT_USERNAME}`;
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(url);
+    } else {
+      window.location.href = url;
+    }
   }, []);
 
   if (status === 'routing') {
