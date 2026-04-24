@@ -193,14 +193,14 @@ export default function ReorderPage() {
       {state.kind === 'not-linked' ? (
         <EmptyState
           title="Not linked yet"
-          body="Go back to @peptidebutlerbot and run /link to connect your Ultimate Peptides account. Then reopen this Mini App."
+          body="Go back to the concierge bot and run /link to connect your Ultimate Peptides account. Then reopen this Mini App."
         />
       ) : null}
 
       {state.kind === 'auth-error' ? (
         <EmptyState
           title="Session expired"
-          body="Reopen this Mini App from a fresh message in @peptidebutlerbot."
+          body="Reopen this Mini App from a fresh message in the Ultimate Peptides concierge."
         />
       ) : null}
 

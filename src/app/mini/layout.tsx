@@ -2,15 +2,16 @@ import Script from 'next/script';
 import MiniAppThemeBridge from './MiniAppThemeBridge';
 
 export const metadata = {
-  title: 'Peptide Butler — Mini App',
+  title: 'Ultimate Peptides — Concierge',
 };
 
 // The root layout renders a global compliance footer. We hide it for mini routes
-// so the WebView feels like a native Telegram sheet. When the user navigates
-// away from /mini/*, this layout unmounts and the style override with it.
+// so the WebView feels like a native Telegram sheet. We also pin the backdrop
+// to Ultimate Peptides black so the brand holds regardless of the user's
+// Telegram skin — the tg vars still apply to interactive surfaces.
 const HIDE_ROOT_CHROME = `
   body > footer { display: none !important; }
-  body { background: var(--tg-bg, #0f1115) !important; }
+  body { background: #0a0a0a !important; }
 `;
 
 export default function MiniAppLayout({
@@ -24,7 +25,7 @@ export default function MiniAppLayout({
         strategy="beforeInteractive"
       />
       <MiniAppThemeBridge />
-      <div className="min-h-screen bg-[var(--tg-bg,#0f1115)] text-[var(--tg-fg,#ffffff)] antialiased">
+      <div className="min-h-screen bg-[#0a0a0a] text-[#f4e9cf] antialiased">
         {children}
       </div>
     </>

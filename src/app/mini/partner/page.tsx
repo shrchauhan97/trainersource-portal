@@ -95,8 +95,8 @@ export default function PartnerDashboardPage() {
         <div className="pt-12 text-center space-y-2">
           <p className="text-base font-semibold">Open from Telegram</p>
           <p className="text-sm opacity-70">
-            This page only works inside the @peptidebutlerbot Mini App. Send /dashboard to the bot
-            to open it.
+            This page only works inside the Ultimate Peptides concierge Mini App. Send
+            /dashboard to the bot to open it.
           </p>
         </div>
       )}
