@@ -37,10 +37,11 @@ const CANONICAL: Record<string, string[]> = {
   "bremelanotide": ["PT-141"],
   "melanotan-2": ["Melanotan-2"],
   "kpv": ["KPV"],
-  // BigCommerce numeric product IDs (verified against ultimate-peptides.com 2026-04-26):
-  // The UP storefront URLs are /products/<id>, not /products/<slug>, so the
-  // widget script extracts numeric IDs from the path. Map each to its
-  // canonical peptide tag(s).
+  // BigCommerce product entries (verified against ultimate-peptides.com 2026-04-26).
+  // The UP storefront accepts BOTH numeric IDs (/products/115) and slugs
+  // (/products/bpc-157-tb-500/) — the homepage links use IDs but the
+  // canonical URL for a product page is the slug. The widget script extracts
+  // the LAST path segment, which is the slug when arriving from a search/menu.
   "112": ["Semaglutide"],
   "113": ["Tirzepatide"],
   "114": ["Retatrutide"],
@@ -49,6 +50,15 @@ const CANONICAL: Record<string, string[]> = {
   "121": ["Selank"],
   "123": ["GHK-Cu"],
   "124": ["Epitalon"],
+  "semaglutide": ["Semaglutide"],
+  "tirzepatide": ["Tirzepatide"],
+  "retatrutide": ["Retatrutide"],
+  "bpc-157-tb-500": ["BPC-157", "TB-500"],
+  "ipamorelin-10mg": ["Ipamorelin"],
+  "ipamorelin-product-vial": ["Ipamorelin"],
+  "selank": ["Selank"],
+  "ghk-cu": ["GHK-Cu"],
+  "epithalon": ["Epitalon"],
 };
 
 export function slugToPeptideTags(slug: string): string[] {
