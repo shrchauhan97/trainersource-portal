@@ -13,17 +13,52 @@ interface Card {
   enthusiasm: number;
 }
 
+// CORS allowlist for the cross-origin widget fetch from the BC storefront.
+// The endpoint serves public, non-sensitive classifier output (no PII, no
+// auth state); allow the UP storefront and its preview/staging domains.
+const ALLOWED_ORIGINS = new Set<string>([
+  "https://ultimate-peptides.com",
+  "https://www.ultimate-peptides.com",
+  "http://localhost:3000",
+]);
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://ultimate-peptides.com";
+  return {
+    "access-control-allow-origin": allow,
+    "vary": "Origin",
+  };
+}
+
+function jsonResponse(body: unknown, init: { status?: number; cache?: string; origin: string | null }): Response {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...corsHeaders(init.origin),
+  };
+  if (init.cache) headers["cache-control"] = init.cache;
+  return new Response(JSON.stringify(body), { status: init.status ?? 200, headers });
+}
+
+export async function OPTIONS(req: Request): Promise<Response> {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders(req.headers.get("origin")),
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-max-age": "86400",
+    },
+  });
+}
+
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ productSlug: string }> },
 ): Promise<Response> {
+  const origin = req.headers.get("origin");
   const { productSlug } = await ctx.params;
   const tags = slugToPeptideTags(productSlug);
   if (tags.length === 0) {
-    return Response.json(
-      { cards: [] },
-      { headers: { "cache-control": "public, max-age=86400" } },
-    );
+    return jsonResponse({ cards: [] }, { cache: "public, max-age=86400", origin });
   }
 
   try {
@@ -45,7 +80,7 @@ export async function GET(
 
     if (error) {
       console.error("[community-pulse] db error", error);
-      return Response.json({ cards: [] }, { status: 200 });
+      return jsonResponse({ cards: [] }, { origin });
     }
 
     const cards: Card[] = (data ?? []).map((row: any) => ({
@@ -57,12 +92,12 @@ export async function GET(
       enthusiasm: row.enthusiasm,
     }));
 
-    return Response.json(
+    return jsonResponse(
       { cards },
-      { headers: { "cache-control": "public, max-age=86400, stale-while-revalidate=604800" } },
+      { cache: "public, max-age=86400, stale-while-revalidate=604800", origin },
     );
   } catch (e) {
     console.error("[community-pulse] unexpected error", e);
-    return Response.json({ cards: [] }, { status: 200 });
+    return jsonResponse({ cards: [] }, { origin });
   }
 }
