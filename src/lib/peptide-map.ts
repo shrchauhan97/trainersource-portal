@@ -37,6 +37,18 @@ const CANONICAL: Record<string, string[]> = {
   "bremelanotide": ["PT-141"],
   "melanotan-2": ["Melanotan-2"],
   "kpv": ["KPV"],
+  // BigCommerce numeric product IDs (verified against ultimate-peptides.com 2026-04-26):
+  // The UP storefront URLs are /products/<id>, not /products/<slug>, so the
+  // widget script extracts numeric IDs from the path. Map each to its
+  // canonical peptide tag(s).
+  "112": ["Semaglutide"],
+  "113": ["Tirzepatide"],
+  "114": ["Retatrutide"],
+  "115": ["BPC-157", "TB-500"],
+  "118": ["Ipamorelin"],
+  "121": ["Selank"],
+  "123": ["GHK-Cu"],
+  "124": ["Epitalon"],
 };
 
 export function slugToPeptideTags(slug: string): string[] {
