@@ -81,26 +81,28 @@ export function QuizTab({ unlocked }: QuizTabProps) {
   }
 
   if (allCorrect) {
-    // Completion screen (PDF screen 7).
+    // PDF screen 7 — full-bleed transition: italic center copy, no chrome,
+    // no button. The stepper above already shows Agreement as unlocked
+    // (advanceOnboardingStep moved trainer.onboarding_step to 'agreement'
+    // on quiz pass) so the only forward affordance is clicking that tab.
+    // We keep a subtle text link as a fallback for users who don't notice
+    // the stepper highlight, but we don't render a primary CTA.
     return (
-      <div className="rounded-[1rem] border border-[#FF5722]/30 bg-[#FFF6F2] px-6 py-12 text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF5722]">Training complete</p>
-        <h3 className="mt-3 text-2xl font-black tracking-tight text-[#173041]">
+      <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-16 text-center">
+        <p className="text-2xl font-medium italic leading-relaxed text-[#173041] sm:text-3xl">
           Thanks for going through the training.
-        </h3>
-        <p className="mt-3 max-w-xl mx-auto text-sm leading-6 text-[#2D4F67]/80">
-          Now click on Agreement. You&apos;re almost done!
         </p>
-        <button
-          type="button"
-          onClick={handleNext}
-          className="mt-8 inline-flex items-center justify-center rounded-xl bg-[#FF5722] px-8 py-3 text-base font-bold uppercase tracking-[0.14em] text-white shadow-md transition hover:bg-[#e64a19]"
-        >
-          Next
-          <span aria-hidden="true" className="ml-2">
-            →
-          </span>
-        </button>
+        <p className="mt-4 text-2xl font-medium italic leading-relaxed text-[#173041] sm:text-3xl">
+          Now click on{' '}
+          <button
+            type="button"
+            onClick={handleNext}
+            className="underline decoration-[#FF5722] decoration-2 underline-offset-4 transition hover:text-[#FF5722]"
+          >
+            Agreement
+          </button>
+          . You&apos;re almost done!
+        </p>
       </div>
     );
   }
