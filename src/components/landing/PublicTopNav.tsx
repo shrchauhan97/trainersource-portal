@@ -45,7 +45,13 @@ export default function PublicTopNav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
+          <Link
+            href="/login"
+            className="font-heading text-xs font-bold uppercase tracking-widest text-stitch-on-surface transition-colors hover:text-primary"
+          >
+            Log In
+          </Link>
           <Link
             href="/apply"
             className="rounded-full bg-gradient-to-r from-[#FF5722] to-[#FF8A50] px-6 py-2.5 font-heading text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:shadow-lg hover:brightness-105"

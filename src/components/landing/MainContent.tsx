@@ -65,8 +65,14 @@ export default function MainContent() {
           </Link>
         </nav>
         <Link
+          href="/login"
+          className="ml-12 font-body text-sm font-bold text-slate-700 hover:text-[#671800] transition-colors"
+        >
+          Log In
+        </Link>
+        <Link
           href="/apply"
-          className="ml-12 px-6 py-2 bg-gradient-to-br from-[#671800] to-[#8f2400] text-white font-headline font-bold text-[11px] uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
+          className="ml-8 px-6 py-2 bg-gradient-to-br from-[#671800] to-[#8f2400] text-white font-headline font-bold text-[11px] uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
         >
           Get Started
         </Link>
