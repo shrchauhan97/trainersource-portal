@@ -1,12 +1,21 @@
 import { loadTrainerOnboardingState } from '../_lib/state';
+import { AgreementScreen } from './AgreementScreen';
 
-// Stub — Agent H replaces this with the welcome video + payout form + signed agreement upload.
+// Step 3 server entry. Loads onboarding state then hands off to the client
+// shell. Env-driven asset URLs (welcome video + agreement PDF) are read here
+// so the client never sees the raw process.env access.
 export default async function OnboardingAgreementPage() {
-  await loadTrainerOnboardingState();
+  const state = await loadTrainerOnboardingState();
+  const welcomeVideoUrl = process.env.NEXT_PUBLIC_AGREEMENT_WELCOME_VIDEO ?? null;
+  const agreementPdfUrl = process.env.NEXT_PUBLIC_AGREEMENT_PDF_URL ?? null;
+
   return (
-    <div className="rounded-[1.25rem] border border-[#41627B]/20 bg-white p-8 text-[#173041] shadow-[0_18px_44px_rgba(45,79,103,0.08)]">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2D4F67]/56">Step 3 — Agreement</p>
-      <h2 className="mt-3 text-2xl font-black tracking-tight">Coming soon</h2>
-    </div>
+    <AgreementScreen
+      trainerId={state.trainerId}
+      welcomeVideoUrl={welcomeVideoUrl}
+      agreementPdfUrl={agreementPdfUrl}
+      payout={state.payoutDetails}
+      agreement={state.agreement}
+    />
   );
 }
