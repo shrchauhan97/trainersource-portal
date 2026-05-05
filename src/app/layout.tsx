@@ -37,7 +37,7 @@ export default function RootLayout({
         {children}
         <footer className="mt-auto border-t border-gray-200 bg-gray-50 px-4 py-3 text-center">
           <p className="text-xs text-gray-500">
-            All products referenced are intended for research purposes only. Not for human consumption. You must be 21 or older to access our products. © {new Date().getFullYear()} Peps Group Omera LLC. All rights reserved.
+            All products referenced are intended for research purposes only. Not for human consumption. You must be 21 or older to access our products. © {new Date().getFullYear()} TrainerSource. All rights reserved.
           </p>
         </footer>
       </body>

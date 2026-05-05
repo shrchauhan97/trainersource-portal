@@ -1,11 +1,31 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import {
   createBigCommerceCustomer,
   getBigCommerceCustomerByEmail,
 } from '@/lib/bigcommerce';
+import { mintSessionToken } from '@/lib/session-token';
 import type { AccessCode, Customer } from '@/lib/types';
 
-const allowedOrigin = 'https://ultimate-peptides.com';
+const allowedOrigins = new Set(
+  (process.env.ACCESS_GATE_ALLOWED_ORIGINS ?? 'https://ultimate-peptides.com')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
+const fallbackOrigin = 'https://ultimate-peptides.com';
+
+// Server-side country allowlist (review finding H1). The storefront form has
+// a dropdown, but the endpoint is reachable directly from any client so the
+// client-side list alone is not a security control. Default matches the
+// storefront's COUNTRIES array; override via env when launching into new
+// markets. Comparison is case-insensitive and trims whitespace to match the
+// normalized `country` value we compute below.
+const allowedCountries = new Set(
+  (process.env.ACCESS_GATE_ALLOWED_COUNTRIES ?? 'Singapore,UAE,Japan,United States')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 type ValidateCodeBody = {
   code?: string;
@@ -27,7 +47,7 @@ function splitCustomerName(name: string) {
 }
 
 async function ensureBigCommerceCustomer(params: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
+  supabase: ReturnType<typeof createServiceClient>;
   customerId: string;
   email: string;
   name: string;
@@ -60,10 +80,11 @@ async function ensureBigCommerceCustomer(params: {
 }
 
 function corsHeaders(origin: string | null) {
-  const responseOrigin = origin === allowedOrigin ? allowedOrigin : allowedOrigin;
+  const responseOrigin = origin && allowedOrigins.has(origin) ? origin : fallbackOrigin;
 
   return {
     'Access-Control-Allow-Origin': responseOrigin,
+    'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
@@ -98,43 +119,16 @@ export async function POST(request: Request) {
       return json({ valid: false, reason: 'invalid_payload' }, 400, origin);
     }
 
-    const supabase = await createClient();
-
-    const { data: existingCustomer, error: existingCustomerError } = await supabase
-      .from('customers')
-      .select('id, bigcommerce_customer_id')
-      .eq('email', email)
-      .maybeSingle<{ id: string; bigcommerce_customer_id: string | null }>();
-
-    if (existingCustomerError) {
-      throw existingCustomerError;
+    if (!allowedCountries.has(country.toLowerCase())) {
+      return json({ valid: false, reason: 'country_not_supported' }, 200, origin);
     }
 
-    if (existingCustomer) {
-      let bigCommerceCustomerId: number | null = null;
-
-      try {
-        bigCommerceCustomerId = await ensureBigCommerceCustomer({
-          supabase,
-          customerId: existingCustomer.id,
-          email,
-          name,
-          currentBigCommerceCustomerId: existingCustomer.bigcommerce_customer_id,
-        });
-      } catch (bigCommerceError) {
-        console.error('BigCommerce customer sync failed', bigCommerceError);
-      }
-
-      return json(
-        {
-          valid: true,
-          customer_id: existingCustomer.id,
-          bc_customer_id: bigCommerceCustomerId,
-        },
-        200,
-        origin,
-      );
-    }
+    // Service-role client: this endpoint is called cross-origin from the
+    // storefront with no user session, so the SSR anon-keyed client wouldn't
+    // satisfy RLS once it's enabled (review finding H3). Access control
+    // here is the access-code itself plus the origin allowlist above — the
+    // whole point of the validate step is to gate unauthenticated traffic.
+    const supabase = createServiceClient();
 
     const { data: accessCode, error: accessCodeError } = await supabase
       .from('access_codes')
@@ -160,6 +154,90 @@ export async function POST(request: Request) {
       return json({ valid: false, reason: 'expired' }, 200, origin);
     }
 
+    // Returning customer: same email, reuse row. The code is still required and
+    // must still be a valid unconsumed code — this branch only avoids duplicate
+    // customer rows and is NOT a gate bypass.
+    const { data: existingCustomer, error: existingCustomerError } = await supabase
+      .from('customers')
+      .select('id, bigcommerce_customer_id')
+      .eq('email', email)
+      .maybeSingle<{ id: string; bigcommerce_customer_id: string | null }>();
+
+    if (existingCustomerError) {
+      throw existingCustomerError;
+    }
+
+    const consumedAt = now.toISOString();
+
+    if (existingCustomer) {
+      const { data: consumedRow, error: consumeError } = await supabase
+        .from('access_codes')
+        .update({
+          status: 'consumed',
+          consumed_by: existingCustomer.id,
+          consumed_at: consumedAt,
+        })
+        .eq('id', accessCode.id)
+        .eq('status', 'active')
+        .select('id')
+        .maybeSingle();
+
+      if (consumeError) {
+        throw consumeError;
+      }
+
+      if (!consumedRow) {
+        return json({ valid: false, reason: 'consumed' }, 200, origin);
+      }
+
+      let bigCommerceCustomerId: number | null = null;
+
+      try {
+        bigCommerceCustomerId = await ensureBigCommerceCustomer({
+          supabase,
+          customerId: existingCustomer.id,
+          email,
+          name,
+          currentBigCommerceCustomerId: existingCustomer.bigcommerce_customer_id,
+        });
+      } catch (bigCommerceError) {
+        console.error('BigCommerce customer sync failed', bigCommerceError);
+      }
+
+      return json(
+        {
+          valid: true,
+          customer_id: existingCustomer.id,
+          bc_customer_id: bigCommerceCustomerId,
+          session_token: mintSessionToken(existingCustomer.id),
+        },
+        200,
+        origin,
+      );
+    }
+
+    // First-time customer: atomic consume FIRST, then insert. If consume loses
+    // the race (another request consumed this code between our check and
+    // update), we reject before creating any customer row.
+    const { data: consumedRow, error: consumeError } = await supabase
+      .from('access_codes')
+      .update({
+        status: 'consumed',
+        consumed_at: consumedAt,
+      })
+      .eq('id', accessCode.id)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle();
+
+    if (consumeError) {
+      throw consumeError;
+    }
+
+    if (!consumedRow) {
+      return json({ valid: false, reason: 'consumed' }, 200, origin);
+    }
+
     const { data: customer, error: customerError } = await supabase
       .from('customers')
       .insert({
@@ -177,20 +255,13 @@ export async function POST(request: Request) {
       throw customerError;
     }
 
-    const consumedAt = now.toISOString();
-
-    const { error: consumeError } = await supabase
+    const { error: backfillError } = await supabase
       .from('access_codes')
-      .update({
-        status: 'consumed',
-        consumed_by: customer.id,
-        consumed_at: consumedAt,
-      })
-      .eq('id', accessCode.id)
-      .eq('status', 'active');
+      .update({ consumed_by: customer.id })
+      .eq('id', accessCode.id);
 
-    if (consumeError) {
-      throw consumeError;
+    if (backfillError) {
+      throw backfillError;
     }
 
     let bigCommerceCustomerId: number | null = null;
@@ -207,7 +278,12 @@ export async function POST(request: Request) {
     }
 
     return json(
-      { valid: true, customer_id: customer.id, bc_customer_id: bigCommerceCustomerId },
+      {
+        valid: true,
+        customer_id: customer.id,
+        bc_customer_id: bigCommerceCustomerId,
+        session_token: mintSessionToken(customer.id),
+      },
       200,
       origin,
     );

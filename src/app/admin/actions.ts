@@ -3,7 +3,16 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
+import { getCurrentAdminEmail } from '@/lib/auth';
+import { deleteBcCustomer } from '@/lib/bc-rest-client';
+import {
+  isRemovableReason,
+  requireSuperadmin,
+  writeLifecycleEvent,
+  type ReasonCategory,
+} from '@/lib/lifecycle';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { PayoutStatus, TrainerStatus } from '@/lib/types';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -270,51 +279,6 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
   revalidateAdminPages(`/admin/trainers/${trainerId}`);
 }
 
-export async function deleteTrainer(formData: FormData): Promise<void> {
-  const supabase = await requireAdmin();
-
-  const trainerId = asString(formData.get('trainerId'));
-
-  if (!trainerId) {
-    throw new Error('Trainer id is required.');
-  }
-
-  const [customersResult, ordersResult, commissionsResult, payoutsResult, codesResult] =
-    await Promise.all([
-      supabase.from('customers').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerId),
-      supabase.from('orders').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerId),
-      supabase.from('commissions').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerId),
-      supabase.from('payouts').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerId),
-      supabase.from('access_codes').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerId),
-    ]);
-
-  for (const result of [customersResult, ordersResult, commissionsResult, payoutsResult, codesResult]) {
-    if (result.error) {
-      throw result.error;
-    }
-  }
-
-  const dependencyCount =
-    Number(customersResult.count ?? 0) +
-    Number(ordersResult.count ?? 0) +
-    Number(commissionsResult.count ?? 0) +
-    Number(payoutsResult.count ?? 0) +
-    Number(codesResult.count ?? 0);
-
-  if (dependencyCount > 0) {
-    throw new Error('Trainer cannot be deleted while related customers, orders, commissions, payouts, or codes exist.');
-  }
-
-  const { error } = await supabase.from('trainers').delete().eq('id', trainerId);
-
-  if (error) {
-    throw error;
-  }
-
-  revalidateAdminPages();
-  redirect('/admin/trainers');
-}
-
 export async function approveSelectedCommissions(formData: FormData): Promise<void> {
   const supabase = await requireAdmin();
 
@@ -535,4 +499,247 @@ export async function generateCodes(formData: FormData): Promise<void> {
   }
 
   revalidateAdminPages();
+}
+
+function readReason(form: FormData): { category: ReasonCategory; note?: string } {
+  const category = String(form.get('reasonCategory') ?? '');
+  if (!isRemovableReason(category)) throw new Error('invalid-reason');
+  const note = String(form.get('reasonNote') ?? '').trim() || undefined;
+  return { category, note };
+}
+
+export async function suspendCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before, error: readErr } = await supabase
+    .from('customers')
+    .select('id, status')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (readErr) throw new Error(`customer lookup failed: ${readErr.message}`);
+  if (!before) throw new Error('customer-not-found');
+  if (before.status === 'suspended') return; // idempotent
+
+  const { error: updErr } = await supabase
+    .from('customers')
+    .update({ status: 'suspended' })
+    .eq('id', customerId);
+  if (updErr) throw new Error(`customer suspend failed: ${updErr.message}`);
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer',
+    entityId: customerId,
+    fromStatus: before.status,
+    toStatus: 'suspended',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+}
+
+export async function removeCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const confirm = String(form.get('confirm') ?? '');
+  if (confirm !== 'REMOVE') throw new Error('confirm-mismatch');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('customers')
+    .select('id, status, bigcommerce_customer_id, access_code_id')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (!before) throw new Error('customer-not-found');
+
+  // Soft-delete — keep the row, flip status. Preserves FK integrity with orders.
+  await supabase
+    .from('customers')
+    .update({ status: 'removed' })
+    .eq('id', customerId);
+
+  // Revoke their access code (if any)
+  if (before.access_code_id) {
+    await supabase
+      .from('access_codes')
+      .update({ status: 'revoked' })
+      .eq('id', before.access_code_id);
+  }
+
+  // Cascade bot identity tables — keyed by bc_customer_id
+  if (before.bigcommerce_customer_id) {
+    const bcId = Number(before.bigcommerce_customer_id);
+    if (!Number.isNaN(bcId)) {
+      // Find linked telegram user ids so we can also wipe their acknowledgment
+      const { data: links } = await supabase
+        .from('bc_customer_links')
+        .select('telegram_user_id')
+        .eq('bc_customer_id', bcId);
+      const tgIds = (links ?? []).map((l: { telegram_user_id: number }) => l.telegram_user_id);
+      if (tgIds.length > 0) {
+        await supabase.from('bot_user_acknowledgments').delete().in('telegram_user_id', tgIds);
+      }
+      await supabase.from('bc_customer_links').delete().eq('bc_customer_id', bcId);
+
+      // Delete BC storefront customer account — last step so Supabase cleanup
+      // is committed even if BC is down. Supabase is source of truth; the gate
+      // enforces removed status regardless of whether the BC account is gone.
+      try {
+        const result = await deleteBcCustomer(bcId);
+        if (!result.deleted && result.reason === 'has-orders') {
+          console.warn(
+            `[removeCustomer] BC customer ${bcId} has orders — storefront account retained, Supabase status=removed stops checkout access via the gate.`,
+          );
+        }
+      } catch (err) {
+        // Log but don't fail — Supabase is source of truth. Admin can retry BC delete manually from BC admin.
+        console.error('[removeCustomer] BC delete failed, continuing:', err);
+      }
+    }
+  }
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer',
+    entityId: customerId,
+    fromStatus: before.status,
+    toStatus: 'removed',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+    metadata: { bc_customer_id: before.bigcommerce_customer_id },
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+}
+
+export async function suspendTrainer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const trainerId = String(form.get('trainerId') ?? '');
+  if (!trainerId) throw new Error('trainer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('trainers').select('id, status').eq('id', trainerId).maybeSingle();
+  if (!before) throw new Error('trainer-not-found');
+  if (before.status === 'suspended') return;
+
+  await supabase.from('trainers').update({ status: 'suspended' }).eq('id', trainerId);
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'trainer',
+    entityId: trainerId,
+    fromStatus: before.status,
+    toStatus: 'suspended',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+  });
+
+  revalidatePath(`/admin/trainers/${trainerId}`);
+  revalidatePath('/admin/trainers');
+}
+
+export async function removeTrainer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const trainerId = String(form.get('trainerId') ?? '');
+  if (!trainerId) throw new Error('trainer-id-required');
+  const confirm = String(form.get('confirm') ?? '');
+  if (confirm !== 'REMOVE') throw new Error('confirm-mismatch');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('trainers').select('id, status').eq('id', trainerId).maybeSingle();
+  if (!before) throw new Error('trainer-not-found');
+
+  // Trainers stay in the DB (commissions/orders reference them) — flip to suspended.
+  // Audit log records intent='removed' even though column stays 'suspended'; trainer_status enum
+  // has no 'removed' value because existing commissions/orders need the FK intact.
+  await supabase.from('trainers').update({ status: 'suspended' }).eq('id', trainerId);
+
+  // Revoke any unconsumed access codes so no new clients can onboard under this trainer.
+  await supabase
+    .from('access_codes')
+    .update({ status: 'revoked' })
+    .eq('trainer_id', trainerId)
+    .eq('status', 'active');
+
+  await writeLifecycleEvent(supabase, {
+    entityType: 'trainer',
+    entityId: trainerId,
+    fromStatus: before.status,
+    toStatus: 'removed',
+    actorAdminId: admin.id,
+    reasonCategory: category,
+    reasonNote: note,
+  });
+
+  revalidatePath(`/admin/trainers/${trainerId}`);
+  revalidatePath('/admin/trainers');
+}
+
+export async function restoreCustomer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const customerId = String(form.get('customerId') ?? '');
+  if (!customerId) throw new Error('customer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('customers').select('id, status').eq('id', customerId).maybeSingle();
+  if (!before) throw new Error('customer-not-found');
+  if (before.status !== 'suspended') throw new Error('not-restorable');
+
+  await supabase.from('customers').update({ status: 'active' }).eq('id', customerId);
+  await writeLifecycleEvent(supabase, {
+    entityType: 'customer', entityId: customerId,
+    fromStatus: 'suspended', toStatus: 'active',
+    actorAdminId: admin.id, reasonCategory: category, reasonNote: note,
+  });
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+}
+
+export async function restoreTrainer(form: FormData): Promise<void> {
+  const email = await getCurrentAdminEmail();
+  const supabase = createServiceClient();
+  const admin = await requireSuperadmin(supabase, email);
+
+  const trainerId = String(form.get('trainerId') ?? '');
+  if (!trainerId) throw new Error('trainer-id-required');
+  const { category, note } = readReason(form);
+
+  const { data: before } = await supabase
+    .from('trainers').select('id, status').eq('id', trainerId).maybeSingle();
+  if (!before) throw new Error('trainer-not-found');
+  if (before.status !== 'suspended') throw new Error('not-restorable');
+
+  await supabase.from('trainers').update({ status: 'active' }).eq('id', trainerId);
+  await writeLifecycleEvent(supabase, {
+    entityType: 'trainer', entityId: trainerId,
+    fromStatus: 'suspended', toStatus: 'active',
+    actorAdminId: admin.id, reasonCategory: category, reasonNote: note,
+  });
+  revalidatePath(`/admin/trainers/${trainerId}`);
+  revalidatePath('/admin/trainers');
 }

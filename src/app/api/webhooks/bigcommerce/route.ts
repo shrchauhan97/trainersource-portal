@@ -51,10 +51,37 @@ function createServiceRoleClient() {
   });
 }
 
-function verifySignature(rawBody: string, signatureHeader: string | null) {
-  const secret = process.env.BIGCOMMERCE_ACCESS_TOKEN;
+function safeEqualStrings(a: string, b: string) {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
 
-  if (!secret || !signatureHeader) {
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+function verifyBearerAuth(authorizationHeader: string | null, secret: string) {
+  if (!authorizationHeader) {
+    return false;
+  }
+
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    return false;
+  }
+
+  return safeEqualStrings(match[1].trim(), secret);
+}
+
+function verifyHmacSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+) {
+  if (!signatureHeader) {
     return false;
   }
 
@@ -74,6 +101,32 @@ function verifySignature(rawBody: string, signatureHeader: string | null) {
   }
 
   return false;
+}
+
+function verifyWebhookRequest(request: Request, rawBody: string) {
+  const secret = process.env.BIGCOMMERCE_WEBHOOK_SECRET;
+
+  if (!secret) {
+    console.error(
+      'BIGCOMMERCE_WEBHOOK_SECRET is not configured — rejecting all webhook calls. ' +
+        'Set this env var to a dedicated secret (NOT your BigCommerce API access token) ' +
+        'and configure the matching value on the BigCommerce webhook destination.',
+    );
+    return false;
+  }
+
+  const authorization = request.headers.get('authorization');
+  if (verifyBearerAuth(authorization, secret)) {
+    return true;
+  }
+
+  // Fallback: HMAC-signed payload delivered via BC Webhooks signing (if enabled)
+  const signatureHeader =
+    request.headers.get('x-bc-webhook-signature') ||
+    request.headers.get('x-bc-signature-sha256') ||
+    request.headers.get('x-bc-signature');
+
+  return verifyHmacSignature(rawBody, signatureHeader, secret);
 }
 
 async function fetchBigCommerceOrder(orderId: string) {
@@ -102,15 +155,41 @@ async function fetchBigCommerceOrder(orderId: string) {
   return response.json() as Promise<BigCommerceOrderResponse>;
 }
 
-function normalizeOrderStatus(status: string | undefined): Order['status'] {
-  const value = status?.toLowerCase() ?? '';
+// Map a BigCommerce order status to our internal `orders.status`.
+// Returns null for statuses that should NOT produce an order row or commission
+// (cancelled, refunded, declined, disputed, partially refunded, manual review).
+// Unknown statuses default to 'pending' — we NEVER assume 'paid'.
+function normalizeOrderStatus(status: string | undefined): Order['status'] | null {
+  const value = status?.toLowerCase().trim() ?? '';
+
+  if (!value) {
+    return 'pending';
+  }
+
+  if (
+    value.includes('cancel') ||
+    value.includes('refund') ||
+    value.includes('declin') ||
+    value.includes('disput') ||
+    value.includes('manual verification')
+  ) {
+    return null;
+  }
 
   if (value.includes('ship')) {
     return 'shipped';
   }
 
-  if (value.includes('deliver')) {
+  if (value.includes('deliver') || value === 'completed') {
     return 'delivered';
+  }
+
+  if (
+    value.includes('awaiting fulfillment') ||
+    value.includes('awaiting pickup') ||
+    value === 'paid'
+  ) {
+    return 'paid';
   }
 
   if (
@@ -121,16 +200,15 @@ function normalizeOrderStatus(status: string | undefined): Order['status'] {
     return 'pending';
   }
 
-  return 'paid';
+  return 'pending';
 }
 
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
-    const signatureHeader = request.headers.get('x-bc-signature');
 
-    if (!rawBody || !verifySignature(rawBody, signatureHeader)) {
-      return json({ error: 'Invalid webhook signature' }, 400);
+    if (!rawBody || !verifyWebhookRequest(request, rawBody)) {
+      return json({ error: 'Invalid webhook signature' }, 401);
     }
 
     const payload = JSON.parse(rawBody) as BigCommerceWebhookPayload;
@@ -210,6 +288,16 @@ export async function POST(request: Request) {
       throw trainerResult.error;
     }
 
+    const normalizedStatus = normalizeOrderStatus(orderDetails.status);
+
+    if (!normalizedStatus) {
+      // Cancelled, refunded, declined, disputed, or under manual review —
+      // do not create an order row or a commission. If this order was
+      // previously booked and is now being reversed, a separate
+      // order/updated handler will reconcile state.
+      return json({ ok: true, skipped: true, reason: 'status_not_actionable' });
+    }
+
     const placedAt = orderDetails.date_created ?? new Date().toISOString();
     const updatedAt = orderDetails.date_modified ?? new Date().toISOString();
     const total = Number(orderDetails.total_inc_tax ?? 0);
@@ -221,8 +309,8 @@ export async function POST(request: Request) {
         customer_id: customer.id,
         trainer_id: trainerId,
         total: Number.isFinite(total) ? total : 0,
-        status: normalizeOrderStatus(orderDetails.status),
-        payment_method: orderDetails.payment_method ?? 'ACH via Paychron',
+        status: normalizedStatus,
+        payment_method: orderDetails.payment_method ?? 'ACH',
         country: orderDetails.billing_address?.country ?? customer.country,
         city: orderDetails.billing_address?.city ?? customer.city,
         placed_at: placedAt,
@@ -235,7 +323,12 @@ export async function POST(request: Request) {
       throw createOrderError;
     }
 
-    if (trainerId && trainerResult.data) {
+    const isSettledStatus =
+      normalizedStatus === 'paid' ||
+      normalizedStatus === 'shipped' ||
+      normalizedStatus === 'delivered';
+
+    if (trainerId && trainerResult.data && isSettledStatus) {
       const isFirstSale = (previousOrdersResult.count ?? 0) === 0;
       const commission = calculateCommission(createdOrder, trainerResult.data, isFirstSale);
 

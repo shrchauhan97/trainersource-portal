@@ -1,7 +1,8 @@
 import Link from 'next/link';
 
-import { deleteTrainer, updateTrainer } from '@/app/admin/actions';
+import { suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
 import { AdminSection } from '@/components/admin/AdminSection';
+import { LifecycleActionForm } from '@/components/admin/LifecycleActionForm';
 import { StatCard } from '@/components/admin/StatCard';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import { StatusBadge } from '@/components/admin/StatusBadge';
@@ -10,6 +11,7 @@ import {
   formatDate,
   formatPercent,
   getTrainerDetail,
+  getTrainerLifecycleEvents,
   trainerStatusOptions,
 } from '@/components/admin/data';
 
@@ -21,7 +23,10 @@ type TrainerDetailPageProps = {
 
 export default async function AdminTrainerDetailPage({ params }: TrainerDetailPageProps) {
   const { trainerId } = await params;
-  const data = await getTrainerDetail(trainerId);
+  const [data, events] = await Promise.all([
+    getTrainerDetail(trainerId),
+    getTrainerLifecycleEvents(trainerId),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -87,16 +92,34 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
             </div>
           </form>
           <div className="mt-4 flex flex-wrap gap-3">
-            {data.canDelete ? (
-              <form action={deleteTrainer}>
-                <input type="hidden" name="trainerId" value={data.trainer.id} />
-                <SubmitButton label="Delete trainer" pendingLabel="Deleting trainer" variant="danger" />
-              </form>
-            ) : (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                Delete is locked while related records exist.
-              </div>
-            )}
+            {data.trainer.status === 'active' ? (
+              <LifecycleActionForm
+                action={suspendTrainer}
+                idField="trainerId"
+                idValue={data.trainer.id}
+                verb="suspend"
+                label="Suspend trainer"
+              />
+            ) : null}
+            {data.trainer.status === 'suspended' ? (
+              <>
+                <LifecycleActionForm
+                  action={restoreTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="restore"
+                  label="Restore trainer"
+                />
+                <LifecycleActionForm
+                  action={removeTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="remove"
+                  label="Remove trainer"
+                  requiresConfirm
+                />
+              </>
+            ) : null}
           </div>
         </AdminSection>
 
@@ -195,6 +218,28 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
           </div>
         </AdminSection>
       </div>
+
+      <AdminSection eyebrow="Audit" title={`Lifecycle events (${events.length})`}>
+        <div className="space-y-3">
+          {events.map((e) => (
+            <div key={e.id} className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 px-5 py-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm font-bold text-slate-900">
+                    {e.from_status ?? '—'} → {e.to_status}
+                  </span>
+                  <span className="text-xs uppercase tracking-[0.2em] text-slate-500">{e.reason_category}</span>
+                </div>
+                <span className="text-xs text-slate-500">{formatDate(e.created_at)} · {e.actor_name}</span>
+              </div>
+              {e.reason_note ? (
+                <p className="mt-2 text-sm italic text-slate-600">&quot;{e.reason_note}&quot;</p>
+              ) : null}
+            </div>
+          ))}
+          {events.length === 0 ? <p className="text-sm text-slate-500">No lifecycle events yet.</p> : null}
+        </div>
+      </AdminSection>
     </div>
   );
 }

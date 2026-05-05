@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 const errorMessages: Record<string, string> = {
   auth_callback_failed: 'We could not complete sign in. Please request a new magic link.',
   not_authorized: 'Your email is not authorized to access TrainerSource.',
+  suspended: 'Your account has been suspended. Contact support to restore access.',
 };
 
 type LoginFormProps = {

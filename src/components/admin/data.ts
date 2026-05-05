@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { AccessCode, Admin, Commission, Order, Payout, Trainer, TrainerStatus } from '@/lib/types';
 
 import {
@@ -766,4 +767,150 @@ export async function getCodesDirectory(filters: {
     admin,
     rows,
   };
+}
+
+export interface CustomerListRow {
+  id: string;
+  name: string;
+  email: string;
+  status: 'active' | 'suspended' | 'removed';
+  trainer_name: string | null;
+  created_at: string;
+}
+
+export async function getCustomersList(): Promise<CustomerListRow[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, name, email, status, created_at, trainers(name)')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    status: r.status ?? 'active',
+    trainer_name: r.trainers?.name ?? null,
+    created_at: r.created_at,
+  }));
+}
+
+export interface CustomerDetail {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  country: string;
+  city: string;
+  status: 'active' | 'suspended' | 'removed';
+  bigcommerce_customer_id: string | null;
+  access_code_id: string | null;
+  trainer: { id: string; name: string } | null;
+  access_code: { code: string; status: string } | null;
+  created_at: string;
+}
+
+export async function getCustomerDetail(customerId: string): Promise<{
+  customer: CustomerDetail;
+  events: Array<{
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    reason_category: string;
+    reason_note: string | null;
+    created_at: string;
+    actor_name: string;
+  }>;
+}> {
+  const supabase = createServiceClient();
+
+  const { data: customer, error } = await supabase
+    .from('customers')
+    .select(`
+      id, name, email, phone, country, city, status,
+      bigcommerce_customer_id, access_code_id, created_at,
+      trainers:trainer_id (id, name),
+      access_codes:access_code_id (code, status)
+    `)
+    .eq('id', customerId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!customer) throw new Error('customer-not-found');
+
+  const { data: events, error: evErr } = await supabase
+    .from('lifecycle_events')
+    .select('id, from_status, to_status, reason_category, reason_note, created_at, admins(name)')
+    .eq('entity_type', 'customer')
+    .eq('entity_id', customerId)
+    .order('created_at', { ascending: false });
+  if (evErr) throw new Error(evErr.message);
+
+  const c: any = customer;
+  return {
+    customer: {
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      country: c.country,
+      city: c.city,
+      status: (c.status ?? 'active') as CustomerDetail['status'],
+      bigcommerce_customer_id: c.bigcommerce_customer_id,
+      access_code_id: c.access_code_id,
+      trainer: c.trainers ? { id: c.trainers.id, name: c.trainers.name } : null,
+      access_code: c.access_codes ? { code: c.access_codes.code, status: c.access_codes.status } : null,
+      created_at: c.created_at,
+    },
+    events: (events ?? []).map((e: any) => ({
+      id: e.id,
+      from_status: e.from_status,
+      to_status: e.to_status,
+      reason_category: e.reason_category,
+      reason_note: e.reason_note,
+      created_at: e.created_at,
+      actor_name: e.admins?.name ?? 'unknown',
+    })),
+  };
+}
+
+export async function getTrainerLifecycleEvents(trainerId: string) {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('lifecycle_events')
+    .select('id, from_status, to_status, reason_category, reason_note, created_at, admins(name)')
+    .eq('entity_type', 'trainer')
+    .eq('entity_id', trainerId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((e: any) => ({
+    id: e.id,
+    from_status: e.from_status as string | null,
+    to_status: e.to_status as string,
+    reason_category: e.reason_category as string,
+    reason_note: e.reason_note as string | null,
+    created_at: e.created_at as string,
+    actor_name: (e.admins?.name as string | undefined) ?? 'unknown',
+  }));
+}
+
+export async function getRecentLifecycleEvents(limit = 200) {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from('lifecycle_events')
+    .select('id, entity_type, entity_id, from_status, to_status, reason_category, reason_note, created_at, admins(name, email)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((e: any) => ({
+    id: e.id as string,
+    entity_type: e.entity_type as 'customer' | 'trainer' | 'access_code',
+    entity_id: e.entity_id as string,
+    from_status: e.from_status as string | null,
+    to_status: e.to_status as string,
+    reason_category: e.reason_category as string,
+    reason_note: e.reason_note as string | null,
+    created_at: e.created_at as string,
+    actor_name: (e.admins?.name as string | undefined) ?? 'unknown',
+    actor_email: (e.admins?.email as string | undefined) ?? '',
+  }));
 }

@@ -16,10 +16,12 @@ import type {
 export const adminNavigation = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/trainers', label: 'Trainers' },
+  { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/orders', label: 'Orders' },
   { href: '/admin/commissions', label: 'Commissions' },
   { href: '/admin/payouts', label: 'Payouts' },
   { href: '/admin/codes', label: 'Codes' },
+  { href: '/admin/events', label: 'Events' },
 ] as const;
 
 type TrainerStats = {

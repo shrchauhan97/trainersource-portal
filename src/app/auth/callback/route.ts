@@ -47,6 +47,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
+  if (role === 'suspended') {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(getLoginUrl(request, 'suspended'));
+  }
+
   await supabase.auth.signOut();
 
   return NextResponse.redirect(getLoginUrl(request, 'not_authorized'));
