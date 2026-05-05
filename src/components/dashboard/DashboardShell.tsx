@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { logout, type DashboardStats } from '@/app/dashboard/actions';
+import type { TrainerStatus } from '@/lib/types';
 import { DashboardTabs } from './DashboardTabs';
 import { StatCard } from './StatCard';
 
@@ -17,6 +19,9 @@ function formatCurrency(value: number) {
 }
 
 export function DashboardShell({ stats, children }: DashboardShellProps) {
+  const trainerStatus: TrainerStatus = stats.trainer.status;
+  const isOnboarding = trainerStatus !== 'active';
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,87,34,0.12),_transparent_30%),linear-gradient(180deg,#0f2230_0%,#173041_20%,#eff6fb_20%,#eff6fb_100%)]">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -46,18 +51,30 @@ export function DashboardShell({ stats, children }: DashboardShellProps) {
               </div>
             </div>
 
-            <form action={logout}>
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white transition hover:bg-white/14"
-              >
-                Logout
-              </button>
-            </form>
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start lg:flex-col lg:items-end">
+              {isOnboarding ? (
+                <Link
+                  href="/onboarding"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#FF5722] px-6 py-3 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-[0_18px_34px_rgba(255,87,34,0.32)] transition hover:bg-[#e64a19]"
+                >
+                  My Onboarding
+                  <span aria-hidden="true">→</span>
+                </Link>
+              ) : null}
+
+              <form action={logout}>
+                <button
+                  type="submit"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white transition hover:bg-white/14"
+                >
+                  Logout
+                </button>
+              </form>
+            </div>
           </div>
 
           <div className="relative mt-6">
-            <DashboardTabs />
+            <DashboardTabs disabled={isOnboarding} />
           </div>
         </header>
 
