@@ -82,8 +82,19 @@ async function getTrainerBySession() {
 // shell renders for onboarding trainers too — tabs are greyed and a MY
 // ONBOARDING CTA leads them back to /onboarding (PDF screen 1). Mutating
 // actions still gate themselves on `trainer.status === 'active'`.
+export async function requireTrainerSession() {
+  const { supabase, trainer } = await getTrainerBySession();
+  return { supabase, trainer };
+}
+
+// Strict variant — throws if the signed-in trainer is not active. Reach for
+// this in any mutation/action that should not run during onboarding (e.g.
+// generating codes, editing settings).
 export async function requireActiveTrainer() {
   const { supabase, trainer } = await getTrainerBySession();
+  if (trainer.status !== 'active') {
+    throw new Error('Finish onboarding before performing this action.');
+  }
   return { supabase, trainer };
 }
 
@@ -96,7 +107,7 @@ export async function logout() {
 export async function generateAccessCode(
   _previousState: GenerateCodeActionState = initialGenerateCodeState
 ) {
-  const { supabase, trainer } = await requireActiveTrainer();
+  const { supabase, trainer } = await requireTrainerSession();
 
   if (trainer.status !== 'active') {
     return {
@@ -159,7 +170,7 @@ export async function generateAccessCode(
 }
 
 export async function getTrainerStats(): Promise<DashboardStats> {
-  const { supabase, trainer } = await requireActiveTrainer();
+  const { supabase, trainer } = await requireTrainerSession();
   const nowIso = new Date().toISOString();
 
   const [{ count: totalClients }, { count: activeCodesCount }, { data: commissions, error: commissionsError }] =
@@ -199,16 +210,16 @@ export async function getTrainerStats(): Promise<DashboardStats> {
 }
 
 export async function getTrainerCodes(): Promise<DashboardCodeRow[]> {
-  const { supabase, trainer } = await requireActiveTrainer();
+  const { supabase, trainer } = await requireTrainerSession();
   return fetchTrainerCodes(supabase, trainer.id);
 }
 
 export async function getTrainerClients(): Promise<DashboardClientRow[]> {
-  const { supabase, trainer } = await requireActiveTrainer();
+  const { supabase, trainer } = await requireTrainerSession();
   return fetchTrainerClients(supabase, trainer.id);
 }
 
 export async function getTrainerCommissions(): Promise<TrainerCommissionsPayload> {
-  const { supabase, trainer } = await requireActiveTrainer();
+  const { supabase, trainer } = await requireTrainerSession();
   return fetchTrainerCommissions(supabase, trainer.id);
 }

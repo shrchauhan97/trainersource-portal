@@ -315,7 +315,7 @@ export async function submitApplicationFinal(): Promise<void> {
     throw new Error(`Fill these required fields before submitting: ${friendly}`);
   }
 
-  await supabase
+  const { error: upsertError } = await supabase
     .from('trainer_application_details')
     .upsert(
       {
@@ -325,6 +325,10 @@ export async function submitApplicationFinal(): Promise<void> {
       },
       { onConflict: 'trainer_id' },
     );
+
+  if (upsertError) {
+    throw new Error(`Could not record application submission: ${upsertError.message}`);
+  }
 
   const advanceResult = await advanceOnboardingStep(trainerId, 'training');
   if (advanceResult.error) throw new Error(advanceResult.error);

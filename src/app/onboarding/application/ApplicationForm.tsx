@@ -40,12 +40,20 @@ export function ApplicationForm({ initial }: { initial: TrainerOnboardingState }
       try {
         await submitApplicationFinal();
       } catch (err) {
-        // `redirect()` throws a NEXT_REDIRECT control-flow signal — let it
-        // bubble so Next can handle the navigation.
-        if (err instanceof Error && err.message === 'NEXT_REDIRECT') throw err;
+        // Redirect errors carry a digest "NEXT_REDIRECT;..." (sometimes
+        // also "NEXT_NOT_FOUND" etc). They must bubble for Next to handle
+        // navigation. The earlier check on err.message is brittle across
+        // versions because Next sets digest, not message.
+        if (isNextControlFlowError(err)) throw err;
         setFinalError(err instanceof Error ? err.message : 'Could not submit application.');
       }
     });
+  }
+
+  function isNextControlFlowError(err: unknown): boolean {
+    if (typeof err !== 'object' || err === null || !('digest' in err)) return false;
+    const digest = (err as { digest?: unknown }).digest;
+    return typeof digest === 'string' && digest.startsWith('NEXT_');
   }
 
   return (

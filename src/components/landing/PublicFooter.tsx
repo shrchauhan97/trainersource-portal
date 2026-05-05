@@ -19,17 +19,14 @@ export default function PublicFooter() {
         </div>
 
         <nav className="grid grid-cols-2 gap-x-12 gap-y-3 font-heading text-sm uppercase tracking-widest md:grid-cols-1">
-          <Link href="#faq" className="text-white/70 transition-colors hover:text-white">
-            FAQ
-          </Link>
-          <Link href="#about" className="text-white/70 transition-colors hover:text-white">
+          <Link href="/#story" className="text-white/70 transition-colors hover:text-white">
             About
           </Link>
-          <Link href="#terms" className="text-white/70 transition-colors hover:text-white">
-            Terms
+          <Link href="/affiliate" className="text-white/70 transition-colors hover:text-white">
+            Affiliate
           </Link>
-          <Link href="#privacy" className="text-white/70 transition-colors hover:text-white">
-            Privacy
+          <Link href="/apply" className="text-white/70 transition-colors hover:text-white">
+            Apply
           </Link>
         </nav>
 
@@ -40,12 +37,12 @@ export default function PublicFooter() {
           >
             Apply Now
           </Link>
-          <Link
-            href="#contact"
+          <a
+            href="mailto:hello@trainersource.app"
             className="rounded border border-white/30 px-7 py-3 font-heading text-xs font-bold uppercase tracking-widest text-white transition-all hover:border-white"
           >
             Contact Us
-          </Link>
+          </a>
         </div>
       </div>
     </footer>

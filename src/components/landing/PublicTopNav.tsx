@@ -6,10 +6,9 @@ type NavLink = {
 };
 
 const NAV_LINKS: NavLink[] = [
-  { label: "Programs", href: "#programs" },
-  { label: "Analytics", href: "#analytics" },
-  { label: "Equipment", href: "#equipment" },
-  { label: "Lab Reports", href: "#lab-reports" },
+  { label: "Home", href: "/" },
+  { label: "Affiliate", href: "/affiliate" },
+  { label: "Apply", href: "/apply" },
 ];
 
 export default function PublicTopNav() {

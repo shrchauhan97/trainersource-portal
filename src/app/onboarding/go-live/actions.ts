@@ -87,6 +87,23 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
       .maybeSingle(),
   ]);
 
+  // Distinguish a real DB/RLS error from "row not found". Treating a
+  // transient failure as "incomplete step" silently misroutes the trainer
+  // back to a step they already finished.
+  if (
+    application.error ||
+    training.error ||
+    quiz.error ||
+    payout.error ||
+    agreement.error
+  ) {
+    return {
+      ok: false,
+      error:
+        'We could not load your onboarding state. Please try again, or contact support if this keeps happening.',
+    };
+  }
+
   if (!application.data?.application_submitted_at) {
     return {
       ok: false,

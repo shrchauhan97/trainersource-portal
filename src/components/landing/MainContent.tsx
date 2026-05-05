@@ -96,7 +96,7 @@ export default function MainContent() {
       </section>
 
       {/* SECTION 2 — Categories */}
-      <section className="bg-[#f0f4f8] px-12 pt-12 pb-32">
+      <section id="peptides" className="bg-[#f0f4f8] px-12 pt-12 pb-32">
         <div className="mb-20 text-center">
           <h2 className="text-4xl font-extrabold font-display tracking-tight text-[#161c20] mb-2">
             What Do Your Clients Need?
@@ -139,7 +139,7 @@ export default function MainContent() {
       </section>
 
       {/* SECTION 3 — TrainerSource Affiliates */}
-      <section className="px-12 py-24 bg-[#f4faff]">
+      <section id="about" className="px-12 py-24 bg-[#f4faff]">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div className="flex flex-col gap-6">
             <span className="font-headline font-bold tracking-[0.05em] uppercase text-[11px] text-[#0b5800] block">
@@ -173,7 +173,7 @@ export default function MainContent() {
       </section>
 
       {/* SECTION 4 — Story */}
-      <section className="px-12 flex gap-16 items-start pb-32 pt-0 flex-col">
+      <section id="story" className="px-12 flex gap-16 items-start pb-32 pt-0 flex-col">
         <div className="w-full text-center mb-16">
           <h2 className="text-5xl font-black font-display tracking-tight text-[#161c20] leading-tight">
             The TrainerSource Story
@@ -203,7 +203,7 @@ export default function MainContent() {
             </div>
             <div className="pt-4">
               <Link
-                href="#story"
+                href="/affiliate"
                 className="inline-block px-10 py-5 bg-[#41627b] text-white font-headline font-bold text-[11px] uppercase tracking-[0.2em] rounded-sm hover:bg-[#2D4F67] transition-all shadow-md"
               >
                 READ OUR STORY

@@ -20,7 +20,7 @@ export const TRAINING_MODULES: readonly TrainingModule[] = [
   },
   {
     id: 'retatrutide',
-    title: 'RETATRUIDE',
+    title: 'RETATRUTIDE',
     subtitle: 'Effective, but with considerations',
     durationLabel: '10 mins',
     envKey: 'NEXT_PUBLIC_TRAINING_VIDEO_RETATRUTIDE',
