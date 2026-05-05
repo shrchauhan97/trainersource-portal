@@ -3,9 +3,9 @@ import MainContent from "@/components/landing/MainContent";
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen w-full relative">
+    <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
       <Sidebar />
-      <MainContent showAgeNotice />
+      <MainContent />
     </div>
   );
 }

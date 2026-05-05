@@ -5,7 +5,21 @@
   --color-hyrox-orange: #FF5722;
   --color-clinical-slate: #2D4F67;
   --color-surface: #f4faff;
-  
+
+  /* Stitch Material-style token palette (additive – do not override existing brand tokens) */
+  --color-stitch-primary: #671800;
+  --color-stitch-on-primary: #ffffff;
+  --color-stitch-secondary: #41627b;
+  --color-stitch-tertiary: #5d5f5f;
+  --color-stitch-tertiary-fixed: #e6e1e5;
+  --color-stitch-surface: #f4faff;
+  --color-stitch-surface-container: #eef4f8;
+  --color-stitch-surface-container-high: #e8eef2;
+  --color-stitch-on-surface: #1a1c1e;
+  --color-stitch-on-surface-variant: #43474e;
+  --color-stitch-outline: #73777f;
+  --color-stitch-outline-variant: #c3c7cf;
+
   --font-heading: var(--font-inter), sans-serif;
   --font-body: var(--font-plus-jakarta), sans-serif;
 }

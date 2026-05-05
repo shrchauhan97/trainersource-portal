@@ -1,54 +1,79 @@
 import Link from "next/link";
 
+const LOGO_URL =
+  "https://lh3.googleusercontent.com/aida/ADBb0uhuqn6jm0dzZBLKIx3NBoKunJZ2S5zC8X8zHDpAXrFB8hD8pIsnj7Qtb5I9GwEm3L2Y87-XDhg9-Z_8w_xcEQtCOx6JEFy48IJxL1ytoLO1-6Tjy_Ux-sKrbczecS2LKria36HZSHQfmo8vQT2cNyCMkY7kwUm398-4U23aRrdNe3lBjoFJcFQ7IB5yJ8IPMc_20urTNkEoNZb_EvfQ_UJ0x8Dw49idEdVryijByK0bjMFtDW2Cx_q7xcukBdccjcx_Xsfi16UO";
+
+type SidebarFeature = {
+  icon: string;
+  title: string;
+  caption: string;
+};
+
+// Verbatim from Stitch HTML — sub-copy preserved exactly so Tom & Moe
+// recognise their own words in the live site.
+const FEATURES: SidebarFeature[] = [
+  { icon: "chat_bubble", title: "Always-On Support", caption: "Via Telegram Chat" },
+  { icon: "credit_card", title: "Online Store", caption: "With Next-Day Delivery" },
+  { icon: "lock", title: "Affiliate Codes", caption: "Made for each client" },
+];
+
 export default function Sidebar() {
   return (
-    <aside className="w-full lg:w-1/3 lg:fixed lg:top-0 lg:bottom-0 lg:left-0 bg-clinical-slate text-white flex flex-col z-20">
-      <div className="flex-1 overflow-y-auto p-6 md:p-12 lg:p-16 flex flex-col gap-12">
-        <div className="font-heading font-extrabold text-2xl tracking-widest uppercase flex items-center gap-2">
-          <div className="w-8 h-8 bg-hyrox-orange rounded flex items-center justify-center text-white text-sm">TS</div>
-          TrainerSource
+    <aside className="z-50 flex w-full flex-col bg-[#2D4F67] text-white lg:fixed lg:bottom-0 lg:left-0 lg:top-0 lg:w-1/3">
+      <div className="flex flex-1 flex-col p-6 md:p-12 overflow-y-auto">
+        <div className="flex items-center gap-3 mb-12">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt="TS Logo"
+            className="object-contain rounded-sm w-24 h-24"
+            src={LOGO_URL}
+          />
+          <div className="flex items-center h-10">
+            <span className="text-white font-body font-bold text-lg tracking-tight uppercase">
+              TRAINERSOURCE
+            </span>
+          </div>
         </div>
 
-        <h1 className="font-heading font-extrabold text-4xl md:text-5xl lg:text-6xl leading-tight uppercase tracking-tight">
-          Delivering <br className="hidden lg:block" />
-          The Products <br className="hidden lg:block" />
-          Your Clients Need
+        <h1 className="font-headline font-extrabold text-white leading-tight tracking-tighter uppercase mb-12 text-5xl lg:text-6xl">
+          WHERE TRAINERS THRIVE
         </h1>
 
-        <div className="flex flex-col gap-4">
-          <div className="bg-white/10 p-5 rounded-xl border border-white/20 backdrop-blur-sm flex items-start gap-4">
-            <span className="material-symbols-outlined text-hyrox-orange text-3xl shrink-0">support_agent</span>
-            <div>
-              <h3 className="font-heading font-bold text-lg uppercase tracking-wide mb-1">Always-On Support</h3>
-              <p className="text-white/80 text-sm font-body">Dedicated clinical guidance for you and your clients.</p>
-            </div>
-          </div>
-          
-          <div className="bg-white/10 p-5 rounded-xl border border-white/20 backdrop-blur-sm flex items-start gap-4">
-            <span className="material-symbols-outlined text-hyrox-orange text-3xl shrink-0">storefront</span>
-            <div>
-              <h3 className="font-heading font-bold text-lg uppercase tracking-wide mb-1">Online Store</h3>
-              <p className="text-white/80 text-sm font-body">Seamless purchasing experience via our platform.</p>
-            </div>
-          </div>
-          
-          <div className="bg-white/10 p-5 rounded-xl border border-white/20 backdrop-blur-sm flex items-start gap-4">
-            <span className="material-symbols-outlined text-hyrox-orange text-3xl shrink-0">payments</span>
-            <div>
-              <h3 className="font-heading font-bold text-lg uppercase tracking-wide mb-1">Affiliate Codes</h3>
-              <p className="text-white/80 text-sm font-body">Track referrals and earn commission automatically.</p>
-            </div>
+        <div className="mb-10">
+          <p className="text-[10px] font-bold text-slate-300 tracking-[0.2em] mb-6 uppercase font-label">
+            BRINGING TRAINERS
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {FEATURES.map((feature) => (
+              <div
+                key={feature.title}
+                className="bg-white/5 border border-white/10 p-3 rounded-lg flex flex-col items-start"
+              >
+                <span
+                  className="material-symbols-outlined text-white text-xl mb-2"
+                  style={{
+                    fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 24",
+                  }}
+                >
+                  {feature.icon}
+                </span>
+                <p className="text-white font-headline font-bold text-[10px] mb-1 leading-tight text-left">
+                  {feature.title}
+                </p>
+                <p className="text-slate-400 text-[8px] font-label text-left">
+                  {feature.caption}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="mt-auto pt-8">
-          <Link 
-            href="/apply" 
-            className="block w-full bg-hyrox-orange hover:bg-orange-600 text-white font-heading font-bold text-lg uppercase tracking-widest py-5 px-6 rounded-lg text-center transition-all shadow-lg hover:shadow-orange-500/20"
-          >
-            Join The Program
-          </Link>
-        </div>
+        <Link
+          href="/apply"
+          className="bg-[#FF5722] text-white font-label font-bold py-4 px-8 rounded-lg tracking-widest text-xs transition-transform active:scale-95 duration-200 w-full uppercase text-center mt-auto"
+        >
+          JOIN THE PROGRAM
+        </Link>
       </div>
     </aside>
   );

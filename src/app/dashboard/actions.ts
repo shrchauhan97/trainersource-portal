@@ -94,13 +94,12 @@ async function getTrainerBySession() {
   return { supabase, trainer: trainer as Trainer };
 }
 
+// Returns the signed-in trainer regardless of activation status. The dashboard
+// shell renders for onboarding trainers too — tabs are greyed and a MY
+// ONBOARDING CTA leads them back to /onboarding (PDF screen 1). Mutating
+// actions still gate themselves on `trainer.status === 'active'`.
 export async function requireActiveTrainer() {
   const { supabase, trainer } = await getTrainerBySession();
-
-  if (trainer.status !== 'active') {
-    redirect('/onboarding');
-  }
-
   return { supabase, trainer };
 }
 
@@ -114,6 +113,15 @@ export async function generateAccessCode(
   _previousState: GenerateCodeActionState = initialGenerateCodeState
 ) {
   const { supabase, trainer } = await requireActiveTrainer();
+
+  if (trainer.status !== 'active') {
+    return {
+      success: false,
+      message: 'Finish onboarding before generating codes.',
+      code: null,
+    } satisfies GenerateCodeActionState;
+  }
+
   let generatedCode = '';
 
   for (let attempt = 0; attempt < 10; attempt += 1) {

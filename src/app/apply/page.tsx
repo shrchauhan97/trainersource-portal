@@ -18,13 +18,18 @@ function SubmitButton() {
   );
 }
 
-const initialState = {
+type ApplyState = {
+  success: boolean;
+  error: string | null;
+};
+
+const initialState: ApplyState = {
   success: false,
-  error: null as string | null,
+  error: null,
 };
 
 export default function ApplyPage() {
-  const [state, formAction] = useActionState(async (prevState: any, formData: FormData) => {
+  const [state, formAction] = useActionState(async (_prevState: ApplyState, formData: FormData) => {
     const result = await submitApplication(formData);
     return {
       success: !!result.success,
@@ -44,7 +49,7 @@ export default function ApplyPage() {
           </div>
           <h2 className="text-2xl font-inter font-bold text-[#2D4F67] mb-2">Application Received!</h2>
           <p className="text-gray-600 font-plus-jakarta-sans">
-            We'll review your application and get back to you shortly.
+            We&apos;ll review your application and get back to you shortly.
           </p>
         </div>
       </div>

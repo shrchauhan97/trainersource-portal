@@ -11,13 +11,36 @@ const tabs = [
   { href: '/dashboard/settings', label: 'Settings' },
 ];
 
-export function DashboardTabs() {
+type DashboardTabsProps = {
+  // When true, tabs render as inert spans with reduced opacity. Used during
+  // onboarding so the chrome is visible but navigation is gated until the
+  // trainer goes live (PDF screen 1).
+  disabled?: boolean;
+};
+
+export function DashboardTabs({ disabled = false }: DashboardTabsProps) {
   const pathname = usePathname();
 
   return (
     <nav className="overflow-x-auto">
-      <div className="inline-flex min-w-full gap-2 rounded-[1.5rem] border border-white/10 bg-[#173041] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div
+        className="inline-flex min-w-full gap-2 rounded-[1.5rem] border border-white/10 bg-[#173041] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        role="tablist"
+        aria-disabled={disabled || undefined}
+      >
         {tabs.map((tab) => {
+          if (disabled) {
+            return (
+              <span
+                key={tab.href}
+                aria-disabled="true"
+                className="cursor-not-allowed rounded-[1rem] px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/30 select-none"
+              >
+                {tab.label}
+              </span>
+            );
+          }
+
           const isActive = pathname === tab.href;
 
           return (

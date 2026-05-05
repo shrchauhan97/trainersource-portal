@@ -13,7 +13,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/integration/**/*.test.ts'],
+    // tests/unit holds fast pure-function tests run on every PR.
+    // tests/integration is reserved for the existing slower DB-backed suite.
+    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
     hookTimeout: 60000,
     testTimeout: 60000,
   },
