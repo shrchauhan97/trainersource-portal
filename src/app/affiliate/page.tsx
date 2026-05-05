@@ -2,11 +2,14 @@ import Link from "next/link";
 import PublicTopNav from "@/components/landing/PublicTopNav";
 import PublicFooter from "@/components/landing/PublicFooter";
 
+// `=s2400` requests a 2400px-max-edge variant from Google's lh3 CDN so the
+// hero stays sharp on retina; without the size param the CDN serves Stitch
+// preview-size (~640px) which renders blurry.
 const HERO_IMAGE =
-  "https://lh3.googleusercontent.com/aida/ADBb0uhJl8AqMpwR0n3wBhjRtOXeTEMFakKuy9zpkHIxseJRA1_y-ysF8ilMTftl0-ILcCM3Z-QoI0OurQOHdrjVi1q6mfTkhBA0yfuNxbqewFJT4k88EMQTxsjBUqKBHqTC2D5EWt0tGaYO9wtIvsVoVQaA7TO2QrAMgauoXxc7pdCTfx2uHND7MbZ-IEL-4DcOUTlzP-Bkz8ebwGOMxnMNj8jKOFCVJzsqKWw8xx75CEyKoIsLNN-HlpOFAbj2e5Q45fBmFBdNoxFcDQ";
+  "https://lh3.googleusercontent.com/aida/ADBb0uhJl8AqMpwR0n3wBhjRtOXeTEMFakKuy9zpkHIxseJRA1_y-ysF8ilMTftl0-ILcCM3Z-QoI0OurQOHdrjVi1q6mfTkhBA0yfuNxbqewFJT4k88EMQTxsjBUqKBHqTC2D5EWt0tGaYO9wtIvsVoVQaA7TO2QrAMgauoXxc7pdCTfx2uHND7MbZ-IEL-4DcOUTlzP-Bkz8ebwGOMxnMNj8jKOFCVJzsqKWw8xx75CEyKoIsLNN-HlpOFAbj2e5Q45fBmFBdNoxFcDQ=s2400";
 
 const SUPPORT_IMAGE =
-  "https://lh3.googleusercontent.com/aida/ADBb0ugXQeVANS6Q79e7SAj32fhc35gQtCyD4V7d9Pi2RMqfm9zeQODh7LFKUOK5fyQS-x82cO_YB8xuVHWCQeIpvyYMDKc0mCaqxKvsJEWnulE3tDCHSpuEwOtKv8YvScVwcGQmfLn6fCK6AFLL2jYaD9RcF27FB71Sm49gGIcAF3q8Z9yJ3vWxv3heZQNDqxooF9IT1C59wjMacAwvLzDZCmGKODbOTLAxe3stlJy9cRFwxb2aZifOZBkp3NVHGKo4j7mwCIrXJR7Fvw";
+  "https://lh3.googleusercontent.com/aida/ADBb0ugXQeVANS6Q79e7SAj32fhc35gQtCyD4V7d9Pi2RMqfm9zeQODh7LFKUOK5fyQS-x82cO_YB8xuVHWCQeIpvyYMDKc0mCaqxKvsJEWnulE3tDCHSpuEwOtKv8YvScVwcGQmfLn6fCK6AFLL2jYaD9RcF27FB71Sm49gGIcAF3q8Z9yJ3vWxv3heZQNDqxooF9IT1C59wjMacAwvLzDZCmGKODbOTLAxe3stlJy9cRFwxb2aZifOZBkp3NVHGKo4j7mwCIrXJR7Fvw=s2400";
 
 // Verbatim from Stitch HTML — labels include the typo "INITAL" preserved
 // from the source so design QA matches exactly. Fix in copy review later.

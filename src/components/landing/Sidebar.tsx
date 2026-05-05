@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const LOGO_URL =
-  "https://lh3.googleusercontent.com/aida/ADBb0uhuqn6jm0dzZBLKIx3NBoKunJZ2S5zC8X8zHDpAXrFB8hD8pIsnj7Qtb5I9GwEm3L2Y87-XDhg9-Z_8w_xcEQtCOx6JEFy48IJxL1ytoLO1-6Tjy_Ux-sKrbczecS2LKria36HZSHQfmo8vQT2cNyCMkY7kwUm398-4U23aRrdNe3lBjoFJcFQ7IB5yJ8IPMc_20urTNkEoNZb_EvfQ_UJ0x8Dw49idEdVryijByK0bjMFtDW2Cx_q7xcukBdccjcx_Xsfi16UO";
+  "https://lh3.googleusercontent.com/aida/ADBb0uhuqn6jm0dzZBLKIx3NBoKunJZ2S5zC8X8zHDpAXrFB8hD8pIsnj7Qtb5I9GwEm3L2Y87-XDhg9-Z_8w_xcEQtCOx6JEFy48IJxL1ytoLO1-6Tjy_Ux-sKrbczecS2LKria36HZSHQfmo8vQT2cNyCMkY7kwUm398-4U23aRrdNe3lBjoFJcFQ7IB5yJ8IPMc_20urTNkEoNZb_EvfQ_UJ0x8Dw49idEdVryijByK0bjMFtDW2Cx_q7xcukBdccjcx_Xsfi16UO=s512";
 
 type SidebarFeature = {
   icon: string;

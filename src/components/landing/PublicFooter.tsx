@@ -1,14 +1,25 @@
 import Link from "next/link";
 
+// Same Stitch brand mark used in the sidebar and header — keeps the lockup
+// consistent everywhere. `=s512` requests retina-sharp pixels.
+const LOGO_URL =
+  "https://lh3.googleusercontent.com/aida/ADBb0uhuqn6jm0dzZBLKIx3NBoKunJZ2S5zC8X8zHDpAXrFB8hD8pIsnj7Qtb5I9GwEm3L2Y87-XDhg9-Z_8w_xcEQtCOx6JEFy48IJxL1ytoLO1-6Tjy_Ux-sKrbczecS2LKria36HZSHQfmo8vQT2cNyCMkY7kwUm398-4U23aRrdNe3lBjoFJcFQ7IB5yJ8IPMc_20urTNkEoNZb_EvfQ_UJ0x8Dw49idEdVryijByK0bjMFtDW2Cx_q7xcukBdccjcx_Xsfi16UO=s512";
+
+const CTA_CLASSES =
+  "inline-flex h-12 min-w-[180px] items-center justify-center rounded font-heading text-xs font-bold uppercase tracking-widest text-white transition-all";
+
 export default function PublicFooter() {
   return (
     <footer className="bg-[#121212] text-white px-6 py-12 md:px-16 md:py-16">
       <div className="mx-auto flex max-w-7xl flex-col gap-12 md:flex-row md:items-start md:justify-between">
         <div className="flex flex-col gap-6">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded bg-hyrox-orange text-sm font-extrabold text-white">
-              TS
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt="TrainerSource"
+              className="h-10 w-10 object-contain rounded-sm"
+              src={LOGO_URL}
+            />
             <span className="font-heading text-xl font-extrabold uppercase tracking-widest text-white">
               TrainerSource
             </span>
@@ -30,16 +41,18 @@ export default function PublicFooter() {
           </Link>
         </nav>
 
+        {/* Equal-sized CTAs via shared min-w + h on inline-flex; APPLY NOW and
+            CONTACT US render the same width regardless of label length. */}
         <div className="flex flex-col items-start gap-4">
           <Link
             href="/apply"
-            className="rounded bg-hyrox-orange px-7 py-3 font-heading text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-orange-600"
+            className={`${CTA_CLASSES} bg-hyrox-orange hover:bg-orange-600`}
           >
             Apply Now
           </Link>
           <a
             href="mailto:hello@trainersource.app"
-            className="rounded border border-white/30 px-7 py-3 font-heading text-xs font-bold uppercase tracking-widest text-white transition-all hover:border-white"
+            className={`${CTA_CLASSES} border border-white/30 hover:border-white`}
           >
             Contact Us
           </a>
