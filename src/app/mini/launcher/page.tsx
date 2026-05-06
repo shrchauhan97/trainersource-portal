@@ -151,11 +151,21 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: '/products', desc: 'Browse the catalogue' },
   { cmd: '/research', desc: 'Podcasts, papers, references' },
   { cmd: '/calculator', desc: 'Open the reconstitution calculator' },
+  { cmd: '/goal', desc: 'Goal-driven brief: fatloss, recovery, cognitive, longevity' },
+  { cmd: '/apply', desc: 'Apply to become a Trainer Source partner' },
+  { cmd: '/applystatus', desc: 'Check your partner-application status' },
+  { cmd: '/applycancel', desc: 'Withdraw your in-progress application' },
   { cmd: '/partner', desc: 'TrainerSource partner programme' },
+  { cmd: '/iamtrainer', desc: 'Link your TrainerSource trainer account' },
+  { cmd: '/link', desc: 'Connect your Ultimate Peptides customer account' },
+  { cmd: '/reorder', desc: 'Past orders, one-tap reorder' },
+  { cmd: '/quietmode', desc: 'Toggle refill reminders' },
   { cmd: '/faq', desc: 'Shipping, COA, payment, codes' },
   { cmd: '/coa', desc: 'Certificate of Analysis for a compound' },
   { cmd: '/support', desc: 'Order and shipping contact' },
+  { cmd: '/forgetme', desc: 'Clear my stored personal context' },
   { cmd: '/reset', desc: 'Clear our conversation history' },
+  { cmd: '/cancel', desc: 'Cancel the current intake or flow' },
 ];
 
 function LauncherInner() {
