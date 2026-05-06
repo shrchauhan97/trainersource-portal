@@ -2,8 +2,7 @@ import Link from "next/link";
 
 // Same Stitch brand mark used in the sidebar and header — keeps the lockup
 // consistent everywhere. `=s512` requests retina-sharp pixels.
-const LOGO_URL =
-  "https://lh3.googleusercontent.com/aida/ADBb0uhuqn6jm0dzZBLKIx3NBoKunJZ2S5zC8X8zHDpAXrFB8hD8pIsnj7Qtb5I9GwEm3L2Y87-XDhg9-Z_8w_xcEQtCOx6JEFy48IJxL1ytoLO1-6Tjy_Ux-sKrbczecS2LKria36HZSHQfmo8vQT2cNyCMkY7kwUm398-4U23aRrdNe3lBjoFJcFQ7IB5yJ8IPMc_20urTNkEoNZb_EvfQ_UJ0x8Dw49idEdVryijByK0bjMFtDW2Cx_q7xcukBdccjcx_Xsfi16UO=s512";
+const LOGO_URL = "/assets/logo-graphic.png";
 
 const CTA_CLASSES =
   "inline-flex h-12 min-w-[180px] items-center justify-center rounded font-heading text-xs font-bold uppercase tracking-widest text-white transition-all";

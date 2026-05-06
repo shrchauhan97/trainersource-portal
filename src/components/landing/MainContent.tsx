@@ -1,17 +1,12 @@
 import Link from "next/link";
 import PublicFooter from "./PublicFooter";
 
-// Stitch hosts these on Google's lh3 CDN; appending `=s2400` requests a
-// 2400px-max-edge variant so retina displays don't render the Stitch
-// preview-size (~640px) blown up. Without it everything looks blurry.
-const MISSION_HERO_IMAGE =
-  "https://lh3.googleusercontent.com/aida/ADBb0uhIy8Vrh_NALhZLF632FHmAX4-Er6WOk7_NbQ9XltfXs2j6RCxEb8_UJ3Yiv5AQyMIOgtrK--DPd7pqR8dWk2BXT7ZIxylz0vprUGiGkitJ1bhmGaTb5QmJgEavLIdNsvWLL_YjrGBJ_Mq7lwm7c-pJsBaXfKDgcR9P71f0vMkV6_wi30A-__yk-JdkEgH9H4jiySMWCAbSzpHNWs5HIBm-U91SOwPfa9GYcxNAs0IaBHqX84xYQXI2TUiLMrccLRQ98irEhJvvCg=s2400";
-
-const AFFILIATE_IMAGE =
-  "https://lh3.googleusercontent.com/aida/ADBb0uhJl8AqMpwR0n3wBhjRtOXeTEMFakKuy9zpkHIxseJRA1_y-ysF8ilMTftl0-ILcCM3Z-QoI0OurQOHdrjVi1q6mfTkhBA0yfuNxbqewFJT4k88EMQTxsjBUqKBHqTC2D5EWt0tGaYO9wtIvsVoVQaA7TO2QrAMgauoXxc7pdCTfx2uHND7MbZ-IEL-4DcOUTlzP-Bkz8ebwGOMxnMNj8jKOFCVJzsqKWw8xx75CEyKoIsLNN-HlpOFAbj2e5Q45fBmFBdNoxFcDQ=s2400";
-
-const FOUNDERS_IMAGE =
-  "https://lh3.googleusercontent.com/aida/ADBb0ui7MyZ6_9idRL9ZWufA82-Cqii1FEU1RcJE64Dn2sqF8gr4ug7xJAuZCWOuTrTPxga1yt9D1BRldA8vH2TTtRiU8czPxwU8krghqXXoP9gxRXSDCxEY7YmiYdjgN_Ma6thI_IRJS03O2mbIqc4T5uTNgJggK4-W0Cfi_7yZkTozB3pmUHhtaX57XJVtBnsrThBl9Z9z1BKFJ2D7YBIga9g3B5_2QikSqcFAQm-la1WAiBPw_4wqxIRUMDcK9GHrpKIXFPdcQtPz=s2400";
+// Stitch's lh3.googleusercontent.com/aida URLs revoked once the Stitch
+// design session expired. Using local /public/assets/ images keeps the
+// site visual stable forever — no external dependency.
+const MISSION_HERO_IMAGE = "/assets/why-peptides-trainer.png";
+const AFFILIATE_IMAGE = "/assets/affiliate-trainer.png";
+const FOUNDERS_IMAGE = "/assets/three-options-labglass.png";
 
 // Icons + copy verbatim from Stitch HTML. Border colours per the original
 // per-card accent (deep red for peptides, slate for apparel, deep green for

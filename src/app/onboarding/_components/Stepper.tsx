@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   ONBOARDING_STEP_LABELS,
   ONBOARDING_STEP_ORDER,
@@ -16,16 +19,25 @@ function stepState(step: OnboardingStep, current: OnboardingStep): StepState {
   return 'locked';
 }
 
+// Resolves the active step from the URL. Inlined into Stepper so the layout
+// doesn't have to pass a function child across the server/client boundary
+// (which Next.js 16 rejects with "Functions cannot be passed directly to
+// Client Components").
+function resolveActiveStep(pathname: string | null): OnboardingStep {
+  if (!pathname) return 'application';
+  for (const [step, path] of Object.entries(ONBOARDING_STEP_PATHS)) {
+    if (pathname.startsWith(path)) return step as OnboardingStep;
+  }
+  return 'application';
+}
+
 // 4-card stepper row matching the PDF mockup. Completed steps are filled
 // blue; current is white with strong border; locked are pale blue. Locked
 // steps render as inert spans, completed/current as Links.
-export function Stepper({
-  currentStep,
-  activeStep,
-}: {
-  currentStep: OnboardingStep;
-  activeStep: OnboardingStep;
-}) {
+export function Stepper({ currentStep }: { currentStep: OnboardingStep }) {
+  const pathname = usePathname();
+  const activeStep = resolveActiveStep(pathname);
+
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {ONBOARDING_STEP_ORDER.map((step, idx) => {

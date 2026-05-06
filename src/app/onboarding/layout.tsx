@@ -3,10 +3,14 @@ import { loadTrainerOnboardingState } from './_lib/state';
 import { OnboardingHeader } from './_components/OnboardingHeader';
 import { Stepper } from './_components/Stepper';
 import { OnboardingStateProvider } from './_components/OnboardingStateProvider';
-import { ActiveStepProvider } from './_components/ActiveStepProvider';
 
 export const dynamic = 'force-dynamic';
 
+// Layout is a server component. We used to wrap children in an
+// ActiveStepProvider that took a render-prop function child, but Next.js 16
+// rejects passing functions across the server/client boundary ("Functions
+// cannot be passed directly to Client Components"). Stepper now reads the
+// active step from usePathname internally — no render prop needed.
 export default async function OnboardingLayout({ children }: { children: ReactNode }) {
   const state = await loadTrainerOnboardingState();
 
@@ -16,14 +20,8 @@ export default async function OnboardingLayout({ children }: { children: ReactNo
         <OnboardingHeader state={state} />
 
         <OnboardingStateProvider state={state}>
-          <ActiveStepProvider>
-            {(activeStep) => (
-              <>
-                <Stepper currentStep={state.currentStep} activeStep={activeStep} />
-                <main className="pb-10">{children}</main>
-              </>
-            )}
-          </ActiveStepProvider>
+          <Stepper currentStep={state.currentStep} />
+          <main className="pb-10">{children}</main>
         </OnboardingStateProvider>
       </div>
     </div>
