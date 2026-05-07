@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PublicFooter from "./PublicFooter";
+import PublicTopNav from "./PublicTopNav";
 
 // Stitch's lh3.googleusercontent.com/aida URLs revoked once the Stitch
 // design session expired. Using local /public/assets/ images keeps the
@@ -38,40 +39,7 @@ const PROGRAM_CARDS = [
 export default function MainContent() {
   return (
     <main className="flex-1 lg:ml-[33.333%] min-h-screen bg-[#f4faff]">
-      <header className="flex justify-end items-center w-full px-12 py-8 sticky top-0 bg-[#f4faff]/80 backdrop-blur-md z-40">
-        <nav className="flex space-x-12">
-          <Link
-            href="/"
-            className="font-body text-sm text-[#671800] font-bold border-b-2 border-[#671800] pb-1"
-          >
-            Home
-          </Link>
-          <Link
-            href="#peptides"
-            className="font-body text-sm text-slate-600 hover:text-[#671800] transition-all opacity-80 hover:opacity-100"
-          >
-            Peptides
-          </Link>
-          <Link
-            href="#about"
-            className="font-body text-sm text-slate-600 hover:text-[#671800] transition-all opacity-80 hover:opacity-100"
-          >
-            About Us
-          </Link>
-        </nav>
-        <Link
-          href="/login"
-          className="ml-12 font-body text-sm font-bold text-slate-700 hover:text-[#671800] transition-colors"
-        >
-          Log In
-        </Link>
-        <Link
-          href="/apply"
-          className="ml-8 px-6 py-2 bg-gradient-to-br from-[#671800] to-[#8f2400] text-white font-headline font-bold text-[11px] uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
-        >
-          Get Started
-        </Link>
-      </header>
+      <PublicTopNav />
 
       {/* SECTION 1 — Our Mission */}
       <section className="px-12 py-24 space-y-12">

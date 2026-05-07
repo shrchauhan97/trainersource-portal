@@ -1,8 +1,5 @@
 import Link from "next/link";
 
-// TS brand mark from Stitch — same logo used in the sidebar, header, and
-// footer for visual consistency. Hosted by Google's design CDN; appending
-// `=s512` requests a 512px max edge so the logo stays sharp at retina sizes.
 const LOGO_URL = "/assets/logo-graphic.png";
 
 type NavLink = {
@@ -16,18 +13,23 @@ const NAV_LINKS: NavLink[] = [
   { label: "Apply", href: "/apply" },
 ];
 
+// Shared shape for Log In + Get Started so they read as a secondary/primary
+// pair — same height, padding, radius. Ghost vs filled handles the hierarchy.
+const CTA_BASE =
+  "inline-flex h-10 items-center justify-center rounded-full px-5 font-heading text-xs font-bold uppercase tracking-widest transition-all";
+
 export default function PublicTopNav() {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-stitch-outline-variant/40 bg-stitch-surface/90 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-10">
-        <Link href="/" className="flex items-center gap-3">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-10 md:py-4">
+        <Link href="/" className="flex items-center gap-2 md:gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt="TrainerSource"
-            className="h-10 w-10 object-contain rounded-sm"
+            className="h-9 w-9 object-contain rounded-sm md:h-10 md:w-10"
             src={LOGO_URL}
           />
-          <span className="font-heading text-lg font-extrabold uppercase tracking-widest text-stitch-on-surface">
+          <span className="font-heading text-base font-extrabold uppercase tracking-widest text-stitch-on-surface md:text-lg">
             TrainerSource
           </span>
         </Link>
@@ -44,16 +46,16 @@ export default function PublicTopNav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2 md:gap-3">
           <Link
             href="/login"
-            className="font-heading text-xs font-bold uppercase tracking-widest text-stitch-on-surface transition-colors hover:text-primary"
+            className={`${CTA_BASE} border border-stitch-on-surface/30 text-stitch-on-surface hover:border-stitch-on-surface hover:text-primary`}
           >
             Log In
           </Link>
           <Link
             href="/apply"
-            className="rounded-full bg-gradient-to-r from-[#FF5722] to-[#FF8A50] px-6 py-2.5 font-heading text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:shadow-lg hover:brightness-105"
+            className={`${CTA_BASE} bg-gradient-to-r from-[#FF5722] to-[#FF8A50] text-white shadow-md hover:shadow-lg hover:brightness-105`}
           >
             Get Started
           </Link>
