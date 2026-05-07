@@ -24,6 +24,7 @@ type BigCommerceOrderResponse = {
   billing_address?: {
     country?: string;
     city?: string;
+    email?: string;
   };
   date_created?: string;
   date_modified?: string;
@@ -230,19 +231,56 @@ export async function POST(request: Request) {
     const customerLookup = String(
       bigcommerceCustomerId ?? orderDetails.customer_id ?? ''
     ).trim();
+    const billingEmail = orderDetails.billing_address?.email?.trim().toLowerCase() ?? '';
 
-    if (!customerLookup) {
+    // BigCommerce sends `customer_id: 0` for guest checkouts. The gate may
+    // already have created a row in `customers` (with the email/trainer
+    // attribution captured at gate time) but the BC checkout-side did not
+    // log the customer in, so the order arrives unlinked. Fall back to an
+    // email match so commission attribution survives guest checkouts.
+    const hasLinkedBCCustomer = !!customerLookup && customerLookup !== '0';
+
+    if (!hasLinkedBCCustomer && !billingEmail) {
       return json({ error: 'Missing customer identifier' }, 400);
     }
 
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('bigcommerce_customer_id', customerLookup)
-      .maybeSingle<Customer>();
+    let customer: Customer | null = null;
 
-    if (customerError) {
-      throw customerError;
+    if (hasLinkedBCCustomer) {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('bigcommerce_customer_id', customerLookup)
+        .maybeSingle<Customer>();
+      if (error) throw error;
+      customer = data;
+    }
+
+    if (!customer && billingEmail) {
+      console.log(
+        `[webhook] Falling back to email lookup for order ${orderId} (bc_id=${customerLookup || 'missing'}, email=${billingEmail})`,
+      );
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .ilike('email', billingEmail)
+        .maybeSingle<Customer>();
+      if (error) throw error;
+      customer = data;
+
+      // If we matched by email but the row has no BC id (or a stale 0/null),
+      // backfill it with the actual BC customer_id from this order. This
+      // self-heals the link so future orders for this customer hit the fast
+      // path.
+      if (customer && hasLinkedBCCustomer && customer.bigcommerce_customer_id !== customerLookup) {
+        const { error: linkError } = await supabase
+          .from('customers')
+          .update({ bigcommerce_customer_id: customerLookup })
+          .eq('id', customer.id);
+        if (linkError) {
+          console.error(`[webhook] Failed to backfill bigcommerce_customer_id for ${customer.id}:`, linkError);
+        }
+      }
     }
 
     if (!customer) {
