@@ -4,7 +4,39 @@ import {
   getBigCommerceCustomerByEmail,
 } from '@/lib/bigcommerce';
 import { mintSessionToken } from '@/lib/session-token';
-import type { AccessCode, Customer } from '@/lib/types';
+import { sendEmail, newClientJoinedEmail } from '@/lib/email';
+import type { AccessCode, Customer, Trainer } from '@/lib/types';
+
+// Best-effort trainer notification when their code is consumed. Never throws —
+// the parent request must succeed even if Resend is down. Returns void.
+async function notifyTrainerOfNewClient(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  trainerId: string | null;
+  clientName: string;
+  clientEmail: string;
+  clientCity: string;
+  clientCountry: string;
+}) {
+  if (!params.trainerId) return;
+  try {
+    const { data: trainer } = await params.supabase
+      .from('trainers')
+      .select('email, name')
+      .eq('id', params.trainerId)
+      .maybeSingle<Pick<Trainer, 'email' | 'name'>>();
+    if (!trainer?.email) return;
+    const { subject, html } = newClientJoinedEmail({
+      trainerName: trainer.name ?? 'there',
+      clientName: params.clientName,
+      clientEmail: params.clientEmail,
+      clientCity: params.clientCity,
+      clientCountry: params.clientCountry,
+    });
+    await sendEmail({ to: trainer.email, subject, html });
+  } catch (err) {
+    console.error('[notify] new-client email failed', err);
+  }
+}
 
 const allowedOrigins = new Set(
   (process.env.ACCESS_GATE_ALLOWED_ORIGINS ?? 'https://ultimate-peptides.com')
@@ -276,6 +308,17 @@ export async function POST(request: Request) {
     } catch (bigCommerceError) {
       console.error('BigCommerce customer sync failed', bigCommerceError);
     }
+
+    // Fire trainer notification AFTER all critical writes succeeded so we
+    // never email about a customer that didn't actually save.
+    await notifyTrainerOfNewClient({
+      supabase,
+      trainerId: accessCode.trainer_id,
+      clientName: name,
+      clientEmail: email,
+      clientCity: city,
+      clientCountry: country,
+    });
 
     return json(
       {

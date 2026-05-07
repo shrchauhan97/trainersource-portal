@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 import { calculateCommission } from '@/lib/commission';
+import { sendEmail, firstOrderEmail } from '@/lib/email';
 import type { Customer, Order, Trainer } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -381,6 +382,24 @@ export async function POST(request: Request) {
 
       if (createCommissionError) {
         throw createCommissionError;
+      }
+
+      // Best-effort commission notification. Wrapped in try so a Resend
+      // outage cannot fail the webhook (BC would retry and create
+      // duplicate commission rows on the next fire).
+      if (trainerResult.data.email && isFirstSale) {
+        try {
+          const { subject, html } = firstOrderEmail({
+            trainerName: trainerResult.data.name ?? 'there',
+            clientName: customer.name ?? customer.email ?? 'a new client',
+            orderTotal: Number(createdOrder.total) || 0,
+            commissionAmount: commission.amount,
+            orderId: String(orderId),
+          });
+          await sendEmail({ to: trainerResult.data.email, subject, html });
+        } catch (emailError) {
+          console.error('[notify] commission email failed', emailError);
+        }
       }
     }
 
