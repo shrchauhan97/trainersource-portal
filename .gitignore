@@ -46,3 +46,4 @@ docs/stitch/
 
 # Worktrees for parallel feature development
 .worktrees/
+package-lock.json
