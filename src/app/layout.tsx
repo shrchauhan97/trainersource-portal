@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const inter = Inter({
@@ -35,6 +37,8 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-body">
         {children}
+        <Analytics />
+        <SpeedInsights />
         <footer className="mt-auto border-t border-gray-200 bg-gray-50 px-4 py-3 text-center">
           <p className="text-xs text-gray-500">
             All products referenced are intended for research purposes only. Not for human consumption. You must be 21 or older to access our products. © {new Date().getFullYear()} TrainerSource. All rights reserved.
