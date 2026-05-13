@@ -413,3 +413,117 @@ CREATE TABLE IF NOT EXISTS bot_blocklist (
     CHECK (reason_category IN ('abuse', 'spam', 'fraud', 'other')),
   reason_note      TEXT
 );
+
+-- === BC webhook idempotency (2026-05-14) ===
+-- Mirrors supabase/migrations/2026-05-14-bc-webhook-idempotency.sql — kept in
+-- sync so a fresh dev project can be stood up from schema.sql alone.
+
+-- 1. UNIQUE on commissions(order_id) — one commission per order. Defense-in-
+-- depth alongside the RPC ON CONFLICT path.
+DO $$ BEGIN
+  ALTER TABLE public.commissions
+    ADD CONSTRAINT commissions_order_id_key UNIQUE (order_id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+END $$;
+
+-- 2. Atomic order+commission ingest RPC. The BC webhook (src/app/api/webhooks/
+-- bigcommerce/route.ts) calls this so both writes commit together or roll
+-- back together. ON CONFLICT (bigcommerce_order_id) DO NOTHING makes the
+-- whole call idempotent against BC's retry-on-timeout behaviour.
+CREATE OR REPLACE FUNCTION public.ingest_bc_order_and_commission(
+  p_bigcommerce_order_id text,
+  p_customer_id          uuid,
+  p_trainer_id           uuid,
+  p_total                numeric,
+  p_status               text,
+  p_payment_method       text,
+  p_country              text,
+  p_city                 text,
+  p_placed_at            timestamptz,
+  p_updated_at           timestamptz,
+  p_commission_type      text    DEFAULT NULL,
+  p_commission_rate      numeric DEFAULT NULL,
+  p_commission_amount    numeric DEFAULT NULL
+)
+RETURNS TABLE (
+  ok            boolean,
+  was_new       boolean,
+  reason        text,
+  order_id      uuid,
+  commission_id uuid
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_order_id      uuid;
+  v_xmax          xid;
+  v_commission_id uuid;
+  v_was_new       boolean;
+BEGIN
+  INSERT INTO public.orders (
+    bigcommerce_order_id, customer_id, trainer_id, total, status,
+    payment_method, country, city, placed_at, updated_at
+  )
+  VALUES (
+    p_bigcommerce_order_id, p_customer_id, p_trainer_id, p_total,
+    p_status::order_status, p_payment_method, p_country, p_city,
+    p_placed_at, p_updated_at
+  )
+  ON CONFLICT (bigcommerce_order_id) DO NOTHING
+  RETURNING id, xmax INTO v_order_id, v_xmax;
+
+  v_was_new := v_order_id IS NOT NULL;
+
+  IF NOT v_was_new THEN
+    SELECT id INTO v_order_id
+      FROM public.orders
+     WHERE bigcommerce_order_id = p_bigcommerce_order_id
+     LIMIT 1;
+    SELECT id INTO v_commission_id
+      FROM public.commissions
+     WHERE order_id = v_order_id
+     LIMIT 1;
+    RETURN QUERY SELECT true, false, 'duplicate_delivery'::text, v_order_id, v_commission_id;
+    RETURN;
+  END IF;
+
+  IF p_trainer_id IS NOT NULL
+     AND p_commission_amount IS NOT NULL
+     AND p_commission_type IS NOT NULL
+     AND p_commission_rate IS NOT NULL
+  THEN
+    INSERT INTO public.commissions (
+      trainer_id, order_id, commission_type, rate_snapshot, amount, status
+    )
+    VALUES (
+      p_trainer_id, v_order_id, p_commission_type::commission_type,
+      p_commission_rate, p_commission_amount, 'pending'
+    )
+    RETURNING id INTO v_commission_id;
+  END IF;
+
+  RETURN QUERY SELECT true, true, NULL::text, v_order_id, v_commission_id;
+  RETURN;
+
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE WARNING 'ingest_bc_order_and_commission(%) failed: % / %',
+      p_bigcommerce_order_id, SQLSTATE, SQLERRM;
+    RETURN QUERY SELECT false, false, 'server_error'::text, NULL::uuid, NULL::uuid;
+    RETURN;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.ingest_bc_order_and_commission(
+  text, uuid, uuid, numeric, text, text, text, text, timestamptz, timestamptz,
+  text, numeric, numeric
+) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.ingest_bc_order_and_commission(
+  text, uuid, uuid, numeric, text, text, text, text, timestamptz, timestamptz,
+  text, numeric, numeric
+) TO service_role;

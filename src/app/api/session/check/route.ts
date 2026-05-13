@@ -64,11 +64,18 @@ export async function POST(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Pull `status` alongside `id` so a customer who's been suspended/removed
+  // post-mint can't keep riding a still-fresh HMAC token (TTL is 30d). The
+  // BC storefront gate-script parses `valid:false` responses and calls
+  // `clearBypassMarkers()`, which wipes the localStorage token + customer
+  // ID — so returning 200 + `valid:false` is the contract that actually
+  // revokes client state. Returning 401 would route through the client's
+  // `if (!response.ok)` branch and leave the stale token in place.
   const { data: customer, error } = await supabase
     .from('customers')
-    .select('id')
+    .select('id, status')
     .eq('id', verified.customerId)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; status: string }>();
 
   if (error) {
     console.error('session check customer lookup failed', error);
@@ -77,6 +84,18 @@ export async function POST(request: Request) {
 
   if (!customer) {
     return json({ valid: false, reason: 'customer_not_found' }, 200, origin);
+  }
+
+  if (customer.status !== 'active') {
+    // Mirrors /api/gate/verify: a non-active customers row means the admin
+    // has suspended or removed this account. Surface the lifecycle state so
+    // ops can correlate logs; the client-side `clearBypassMarkers()` runs
+    // on any `valid:false` reply, so the stale localStorage token is wiped.
+    console.info('session check rejected: non-active customer', {
+      customerId: verified.customerId,
+      status: customer.status,
+    });
+    return json({ valid: false, reason: 'suspended' }, 200, origin);
   }
 
   return json({ valid: true }, 200, origin);

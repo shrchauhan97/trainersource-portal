@@ -6,6 +6,18 @@ import { calculateCommission } from '@/lib/commission';
 import { sendEmail, firstOrderEmail } from '@/lib/email';
 import type { Customer, Order, Trainer } from '@/lib/types';
 
+// Typed row returned by the `ingest_bc_order_and_commission` RPC (defined in
+// supabase/migrations/2026-05-14-bc-webhook-idempotency.sql). Both inserts run
+// inside a single PL/pgSQL function so the order + commission write is atomic;
+// duplicate BC deliveries hit the ON CONFLICT path and return was_new=false.
+type IngestOrderRpcRow = {
+  ok: boolean;
+  was_new: boolean;
+  reason: string | null;
+  order_id: string | null;
+  commission_id: string | null;
+};
+
 export const runtime = 'nodejs';
 
 type BigCommerceWebhookPayload = {
@@ -290,12 +302,13 @@ export async function POST(request: Request) {
 
     const trainerId = customer.trainer_id;
 
-    const existingOrderQuery = supabase
-      .from('orders')
-      .select('id')
-      .eq('bigcommerce_order_id', String(orderId))
-      .maybeSingle<{ id: string }>();
-
+    // We no longer pre-check whether the order already exists — the RPC
+    // `ingest_bc_order_and_commission` does that atomically via ON CONFLICT
+    // (see supabase/migrations/2026-05-14-bc-webhook-idempotency.sql). We
+    // still fetch the trainer row + previous-orders count in parallel so we
+    // can compute the commission payload BEFORE handing both writes to the
+    // RPC (the RPC needs a numeric amount; it does not call
+    // calculateCommission itself).
     const previousOrdersQuery = supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
@@ -305,19 +318,10 @@ export async function POST(request: Request) {
       ? supabase.from('trainers').select('*').eq('id', trainerId).maybeSingle<Trainer>()
       : Promise.resolve({ data: null, error: null });
 
-    const [existingOrderResult, previousOrdersResult, trainerResult] = await Promise.all([
-      existingOrderQuery,
+    const [previousOrdersResult, trainerResult] = await Promise.all([
       previousOrdersQuery,
       trainerQuery,
     ]);
-
-    if (existingOrderResult.error) {
-      throw existingOrderResult.error;
-    }
-
-    if (existingOrderResult.data) {
-      return json({ ok: true, order_id: existingOrderResult.data.id });
-    }
 
     if (previousOrdersResult.error) {
       throw previousOrdersResult.error;
@@ -339,71 +343,104 @@ export async function POST(request: Request) {
 
     const placedAt = orderDetails.date_created ?? new Date().toISOString();
     const updatedAt = orderDetails.date_modified ?? new Date().toISOString();
-    const total = Number(orderDetails.total_inc_tax ?? 0);
-
-    const { data: createdOrder, error: createOrderError } = await supabase
-      .from('orders')
-      .insert({
-        bigcommerce_order_id: String(orderId),
-        customer_id: customer.id,
-        trainer_id: trainerId,
-        total: Number.isFinite(total) ? total : 0,
-        status: normalizedStatus,
-        payment_method: orderDetails.payment_method ?? 'ACH',
-        country: orderDetails.billing_address?.country ?? customer.country,
-        city: orderDetails.billing_address?.city ?? customer.city,
-        placed_at: placedAt,
-        updated_at: updatedAt,
-      })
-      .select('*')
-      .single<Order>();
-
-    if (createOrderError) {
-      throw createOrderError;
-    }
+    const totalNumeric = Number(orderDetails.total_inc_tax ?? 0);
+    const total = Number.isFinite(totalNumeric) ? totalNumeric : 0;
 
     const isSettledStatus =
       normalizedStatus === 'paid' ||
       normalizedStatus === 'shipped' ||
       normalizedStatus === 'delivered';
 
+    const isFirstSale = (previousOrdersResult.count ?? 0) === 0;
+
+    // Compute the commission payload up-front so the RPC sees both writes in
+    // one call. NULL fields tell the RPC "no commission row this time" —
+    // either there's no trainer attribution, or the order is still pending /
+    // unsettled.
+    let commissionType: 'first_sale' | 'reorder' | null = null;
+    let commissionRate: number | null = null;
+    let commissionAmount: number | null = null;
     if (trainerId && trainerResult.data && isSettledStatus) {
-      const isFirstSale = (previousOrdersResult.count ?? 0) === 0;
-      const commission = calculateCommission(createdOrder, trainerResult.data, isFirstSale);
+      const commission = calculateCommission(
+        { total } satisfies Pick<Order, 'total'>,
+        trainerResult.data,
+        isFirstSale,
+      );
+      commissionType = commission.commissionType as 'first_sale' | 'reorder';
+      commissionRate = commission.rate;
+      commissionAmount = commission.amount;
+    }
 
-      const { error: createCommissionError } = await supabase.from('commissions').insert({
-        trainer_id: trainerId,
-        order_id: createdOrder.id,
-        commission_type: commission.commissionType,
-        rate_snapshot: commission.rate,
-        amount: commission.amount,
-        status: 'pending',
+    const { data: rpcRows, error: rpcError } = await supabase.rpc(
+      'ingest_bc_order_and_commission',
+      {
+        p_bigcommerce_order_id: String(orderId),
+        p_customer_id: customer.id,
+        p_trainer_id: trainerId ?? null,
+        p_total: total,
+        p_status: normalizedStatus,
+        p_payment_method: orderDetails.payment_method ?? 'ACH',
+        p_country: orderDetails.billing_address?.country ?? customer.country,
+        p_city: orderDetails.billing_address?.city ?? customer.city,
+        p_placed_at: placedAt,
+        p_updated_at: updatedAt,
+        p_commission_type: commissionType,
+        p_commission_rate: commissionRate,
+        p_commission_amount: commissionAmount,
+      },
+    );
+
+    if (rpcError) {
+      throw rpcError;
+    }
+
+    // The RPC returns SETOF a typed row — supabase-js wraps it in an array.
+    const rpcResult = (Array.isArray(rpcRows) ? rpcRows[0] : rpcRows) as
+      | IngestOrderRpcRow
+      | null;
+
+    if (!rpcResult || !rpcResult.ok) {
+      // The function caught an unexpected SQLSTATE and returned ok=false.
+      // The whole txn rolled back — nothing to clean up. Surface 500 so BC
+      // retries (with a fresh idempotent attempt).
+      console.error(
+        `[webhook] ingest_bc_order_and_commission failed for order ${orderId}: ${rpcResult?.reason ?? 'no_result'}`,
+      );
+      return json({ error: 'ingest_failed', reason: rpcResult?.reason ?? null }, 500);
+    }
+
+    if (!rpcResult.was_new) {
+      // Duplicate webhook delivery (BC retries on timeout). The first call
+      // already wrote both rows; subsequent calls are no-ops. Returning 200
+      // here keeps BC from retrying forever — the existing order_id is
+      // echoed back so logs can correlate the retry to the original write.
+      return json({
+        ok: true,
+        idempotent: true,
+        order_id: rpcResult.order_id,
       });
+    }
 
-      if (createCommissionError) {
-        throw createCommissionError;
-      }
-
-      // Best-effort commission notification. Wrapped in try so a Resend
-      // outage cannot fail the webhook (BC would retry and create
-      // duplicate commission rows on the next fire).
-      if (trainerResult.data.email && isFirstSale) {
-        try {
-          const { subject, html } = firstOrderEmail({
-            trainerName: trainerResult.data.name ?? 'there',
-            clientName: customer.name ?? customer.email ?? 'a new client',
-            orderTotal: Number(createdOrder.total) || 0,
-            commissionAmount: commission.amount,
-            orderId: String(orderId),
-          });
-          await sendEmail({ to: trainerResult.data.email, subject, html });
-        } catch (emailError) {
-          console.error('[notify] commission email failed', emailError);
-        }
+    // Fresh write — fire the first-sale notification. The RPC has already
+    // committed both rows; we don't roll anything back on email failure
+    // (Resend outage shouldn't 5xx the webhook → BC would retry → idempotent
+    // path → still no email, but at least no double-write).
+    if (commissionAmount !== null && trainerResult.data?.email && isFirstSale) {
+      try {
+        const { subject, html } = firstOrderEmail({
+          trainerName: trainerResult.data.name ?? 'there',
+          clientName: customer.name ?? customer.email ?? 'a new client',
+          orderTotal: total,
+          commissionAmount,
+          orderId: String(orderId),
+        });
+        await sendEmail({ to: trainerResult.data.email, subject, html });
+      } catch (emailError) {
+        console.error('[notify] commission email failed', emailError);
       }
     }
 
-    return json({ ok: true, order_id: createdOrder.id });
+    return json({ ok: true, order_id: rpcResult.order_id });
   } catch (error) {
     console.error(error);
     return json({ error: 'Internal server error' }, 500);
