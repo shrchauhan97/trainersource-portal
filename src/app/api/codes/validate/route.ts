@@ -5,7 +5,7 @@ import {
 } from '@/lib/bigcommerce';
 import { mintSessionToken } from '@/lib/session-token';
 import { sendEmail, newClientJoinedEmail } from '@/lib/email';
-import type { AccessCode, Customer, Trainer } from '@/lib/types';
+import type { Trainer } from '@/lib/types';
 
 // Best-effort trainer notification when their code is consumed. Never throws —
 // the parent request must succeed even if Resend is down. Returns void.
@@ -52,12 +52,28 @@ const fallbackOrigin = 'https://ultimate-peptides.com';
 // storefront's COUNTRIES array; override via env when launching into new
 // markets. Comparison is case-insensitive and trims whitespace to match the
 // normalized `country` value we compute below.
-const allowedCountries = new Set(
-  (process.env.ACCESS_GATE_ALLOWED_COUNTRIES ?? 'Singapore,UAE,Japan,United States')
-    .split(',')
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean),
-);
+const allowedCountries = (process.env.ACCESS_GATE_ALLOWED_COUNTRIES ?? 'Singapore,UAE,Japan,United States')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+// Code shape — matches Fix-A's `invalid_format` contract. Same regex is
+// duplicated inside the validate_and_consume_code RPC for defence in depth,
+// but doing it here lets us short-circuit without a DB round trip and lets
+// the gate UI show a `code_format_error` style message.
+const CODE_REGEX = /^[A-Z0-9-]{4,40}$/;
+
+// Failure reasons the route may return. MUST stay aligned with the
+// FAILED_MESSAGES map in up-bc-cdn/bc-paste.js (Fix-A surface).
+type ValidationReason =
+  | 'not_found'
+  | 'consumed'
+  | 'expired'
+  | 'revoked'
+  | 'country_blocked'
+  | 'invalid_format'
+  | 'invalid_input'
+  | 'server_error';
 
 type ValidateCodeBody = {
   code?: string;
@@ -65,6 +81,15 @@ type ValidateCodeBody = {
   name?: string;
   country?: string;
   city?: string;
+};
+
+// Shape returned by validate_and_consume_code (see migrations/2026-05-14-validate-consume-atomic.sql)
+type ValidateRpcRow = {
+  ok: boolean;
+  reason: ValidationReason | null;
+  access_code_id: string | null;
+  customer_id: string | null;
+  trainer_id: string | null;
 };
 
 function splitCustomerName(name: string) {
@@ -129,6 +154,50 @@ function json(body: Record<string, unknown>, status = 200, origin: string | null
   });
 }
 
+// Extract a plausible client IP from the proxy headers Vercel / typical CDNs
+// add. Returns null when nothing useful is present.
+function getClientIp(request: Request): string | null {
+  const xff = request.headers.get('x-forwarded-for');
+  if (xff) {
+    const first = xff.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  return (
+    request.headers.get('x-real-ip') ??
+    request.headers.get('cf-connecting-ip') ??
+    null
+  );
+}
+
+// Single audit-log writer. Never throws — a failed audit insert must NOT
+// fail the gate request itself.
+async function logAttempt(
+  supabase: ReturnType<typeof createServiceClient>,
+  row: {
+    code: string;
+    access_code_id: string | null;
+    trainer_id: string | null;
+    email: string | null;
+    name: string | null;
+    country: string | null;
+    city: string | null;
+    ip_address: string | null;
+    user_agent: string | null;
+    outcome: string;
+    reason_detail: string | null;
+    duration_ms: number;
+  },
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('code_attempts').insert(row);
+    if (error) {
+      console.error('[code_attempts] insert failed', error);
+    }
+  } catch (err) {
+    console.error('[code_attempts] insert threw', err);
+  }
+}
+
 export async function OPTIONS(request: Request) {
   return new Response(null, {
     status: 204,
@@ -138,200 +207,189 @@ export async function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   const origin = request.headers.get('origin');
+  const t0 = Date.now();
+  const userAgent = request.headers.get('user-agent');
+  const ipAddress = getClientIp(request);
+
+  // Best-effort body parse — failure here means we can't even log a useful
+  // audit row. Treat as invalid_input.
+  let body: ValidateCodeBody = {};
+  try {
+    body = (await request.json()) as ValidateCodeBody;
+  } catch {
+    // Fall through to the validation block which will emit invalid_input.
+  }
+
+  const code = body.code?.trim().toUpperCase() ?? '';
+  const email = body.email?.trim().toLowerCase() ?? '';
+  const name = body.name?.trim() ?? '';
+  const country = body.country?.trim() ?? '';
+  const city = body.city?.trim() ?? '';
+
+  // We need a supabase client for both the RPC AND the audit insert. If the
+  // env is misconfigured we still respond gracefully (and log to console).
+  let supabase: ReturnType<typeof createServiceClient>;
+  try {
+    supabase = createServiceClient();
+  } catch (err) {
+    console.error('[validate] createServiceClient failed', err);
+    return json({ valid: false, reason: 'server_error' satisfies ValidationReason }, 200, origin);
+  }
+
+  // Helper to finalise a request with a single audit-row write + JSON response.
+  const finish = async (
+    outcome: 'success' | ValidationReason,
+    extra: {
+      access_code_id?: string | null;
+      trainer_id?: string | null;
+      reason_detail?: string | null;
+      response: Record<string, unknown>;
+    },
+  ) => {
+    const duration = Date.now() - t0;
+    await logAttempt(supabase, {
+      code: code || (body.code ?? ''),
+      access_code_id: extra.access_code_id ?? null,
+      trainer_id: extra.trainer_id ?? null,
+      email: email || null,
+      name: name || null,
+      country: country || null,
+      city: city || null,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      outcome,
+      reason_detail: extra.reason_detail ?? null,
+      duration_ms: duration,
+    });
+    return json(extra.response, 200, origin);
+  };
 
   try {
-    const body = (await request.json()) as ValidateCodeBody;
-    const code = body.code?.trim().toUpperCase();
-    const email = body.email?.trim().toLowerCase();
-    const name = body.name?.trim();
-    const country = body.country?.trim();
-    const city = body.city?.trim();
-
-    if (!code || !email || !name || !country || !city) {
-      return json({ valid: false, reason: 'invalid_payload' }, 400, origin);
+    // 1. TS-side fast-fail on format. The RPC duplicates these checks for
+    //    defence in depth, but bouncing here saves a DB round trip and lets
+    //    us return a more precise reason than the RPC could.
+    if (!code) {
+      return finish('invalid_input', {
+        response: { valid: false, reason: 'invalid_input' satisfies ValidationReason },
+      });
     }
 
-    if (!allowedCountries.has(country.toLowerCase())) {
-      return json({ valid: false, reason: 'country_not_supported' }, 200, origin);
+    if (!CODE_REGEX.test(code)) {
+      return finish('invalid_format', {
+        response: { valid: false, reason: 'invalid_format' satisfies ValidationReason },
+      });
     }
 
-    // Service-role client: this endpoint is called cross-origin from the
-    // storefront with no user session, so the SSR anon-keyed client wouldn't
-    // satisfy RLS once it's enabled (review finding H3). Access control
-    // here is the access-code itself plus the origin allowlist above — the
-    // whole point of the validate step is to gate unauthenticated traffic.
-    const supabase = createServiceClient();
-
-    const { data: accessCode, error: accessCodeError } = await supabase
-      .from('access_codes')
-      .select('*')
-      .eq('code', code)
-      .maybeSingle<AccessCode>();
-
-    if (accessCodeError) {
-      throw accessCodeError;
+    if (!email || !name || !country || !city) {
+      return finish('invalid_input', {
+        response: { valid: false, reason: 'invalid_input' satisfies ValidationReason },
+      });
     }
 
-    if (!accessCode) {
-      return json({ valid: false, reason: 'not_found' }, 200, origin);
+    // 2. Atomic gate transaction. This RPC does: SELECT...FOR UPDATE on the
+    //    access_codes row, lifecycle checks, customers find-or-insert,
+    //    access_codes UPDATE — all in one PL/pgSQL function body which
+    //    Postgres runs as a single implicit transaction. On ANY internal
+    //    error the function returns reason='server_error' and the code stays
+    //    'active'. Kills the A4 consume-then-insert race permanently.
+    const { data, error } = await supabase.rpc('validate_and_consume_code', {
+      p_code: code,
+      p_name: name,
+      p_email: email,
+      p_country: country,
+      p_city: city,
+      p_allowed_countries: allowedCountries,
+    });
+
+    if (error) {
+      console.error('[validate] RPC error', error);
+      return finish('server_error', {
+        reason_detail: error.message ?? String(error),
+        response: { valid: false, reason: 'server_error' satisfies ValidationReason },
+      });
     }
 
-    const now = new Date();
+    // PostgREST returns the SETOF row as either an array of one row or the
+    // row itself depending on `returns()` shape. Handle both.
+    const row: ValidateRpcRow | null = Array.isArray(data)
+      ? (data[0] as ValidateRpcRow | undefined) ?? null
+      : ((data as ValidateRpcRow | null) ?? null);
 
-    if (accessCode.status === 'consumed') {
-      return json({ valid: false, reason: 'consumed' }, 200, origin);
+    if (!row) {
+      return finish('server_error', {
+        reason_detail: 'RPC returned no rows',
+        response: { valid: false, reason: 'server_error' satisfies ValidationReason },
+      });
     }
 
-    if (accessCode.status !== 'active' || new Date(accessCode.expires_at) <= now) {
-      return json({ valid: false, reason: 'expired' }, 200, origin);
+    if (!row.ok) {
+      const reason: ValidationReason = (row.reason ?? 'server_error') as ValidationReason;
+      return finish(reason, {
+        access_code_id: row.access_code_id,
+        trainer_id: row.trainer_id,
+        response: { valid: false, reason },
+      });
     }
 
-    // Returning customer: same email, reuse row. The code is still required and
-    // must still be a valid unconsumed code — this branch only avoids duplicate
-    // customer rows and is NOT a gate bypass.
-    const { data: existingCustomer, error: existingCustomerError } = await supabase
-      .from('customers')
-      .select('id, bigcommerce_customer_id')
-      .eq('email', email)
-      .maybeSingle<{ id: string; bigcommerce_customer_id: string | null }>();
-
-    if (existingCustomerError) {
-      throw existingCustomerError;
+    if (!row.customer_id || !row.access_code_id) {
+      // Defensive — RPC contract says these are non-null on ok=true.
+      return finish('server_error', {
+        reason_detail: 'RPC ok=true but missing customer_id/access_code_id',
+        response: { valid: false, reason: 'server_error' satisfies ValidationReason },
+      });
     }
 
-    const consumedAt = now.toISOString();
-
-    if (existingCustomer) {
-      const { data: consumedRow, error: consumeError } = await supabase
-        .from('access_codes')
-        .update({
-          status: 'consumed',
-          consumed_by: existingCustomer.id,
-          consumed_at: consumedAt,
-        })
-        .eq('id', accessCode.id)
-        .eq('status', 'active')
-        .select('id')
-        .maybeSingle();
-
-      if (consumeError) {
-        throw consumeError;
-      }
-
-      if (!consumedRow) {
-        return json({ valid: false, reason: 'consumed' }, 200, origin);
-      }
-
-      let bigCommerceCustomerId: number | null = null;
-
-      try {
-        bigCommerceCustomerId = await ensureBigCommerceCustomer({
-          supabase,
-          customerId: existingCustomer.id,
-          email,
-          name,
-          currentBigCommerceCustomerId: existingCustomer.bigcommerce_customer_id,
-        });
-      } catch (bigCommerceError) {
-        console.error('BigCommerce customer sync failed', bigCommerceError);
-      }
-
-      return json(
-        {
-          valid: true,
-          customer_id: existingCustomer.id,
-          bc_customer_id: bigCommerceCustomerId,
-          session_token: mintSessionToken(existingCustomer.id),
-        },
-        200,
-        origin,
-      );
-    }
-
-    // First-time customer: atomic consume FIRST, then insert. If consume loses
-    // the race (another request consumed this code between our check and
-    // update), we reject before creating any customer row.
-    const { data: consumedRow, error: consumeError } = await supabase
-      .from('access_codes')
-      .update({
-        status: 'consumed',
-        consumed_at: consumedAt,
-      })
-      .eq('id', accessCode.id)
-      .eq('status', 'active')
-      .select('id')
-      .maybeSingle();
-
-    if (consumeError) {
-      throw consumeError;
-    }
-
-    if (!consumedRow) {
-      return json({ valid: false, reason: 'consumed' }, 200, origin);
-    }
-
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .insert({
-        email,
-        name,
-        country,
-        city,
-        trainer_id: accessCode.trainer_id,
-        access_code_id: accessCode.id,
-      })
-      .select('*')
-      .single<Customer>();
-
-    if (customerError) {
-      throw customerError;
-    }
-
-    const { error: backfillError } = await supabase
-      .from('access_codes')
-      .update({ consumed_by: customer.id })
-      .eq('id', accessCode.id);
-
-    if (backfillError) {
-      throw backfillError;
-    }
-
+    // 3. Best-effort BigCommerce sync. Failures here do NOT roll back the
+    //    consume — the customer is in our DB and the code is consumed; BC
+    //    can be reconciled by the webhook path later.
     let bigCommerceCustomerId: number | null = null;
-
     try {
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('bigcommerce_customer_id')
+        .eq('id', row.customer_id)
+        .maybeSingle<{ bigcommerce_customer_id: string | null }>();
+
       bigCommerceCustomerId = await ensureBigCommerceCustomer({
         supabase,
-        customerId: customer.id,
+        customerId: row.customer_id,
         email,
         name,
+        currentBigCommerceCustomerId: existing?.bigcommerce_customer_id ?? null,
       });
     } catch (bigCommerceError) {
       console.error('BigCommerce customer sync failed', bigCommerceError);
     }
 
-    // Fire trainer notification AFTER all critical writes succeeded so we
-    // never email about a customer that didn't actually save.
+    // 4. Best-effort trainer notification. Same idempotency story: if Resend
+    //    is down, the customer is already attributed and the trainer can
+    //    still see the new client in the portal.
     await notifyTrainerOfNewClient({
       supabase,
-      trainerId: accessCode.trainer_id,
+      trainerId: row.trainer_id,
       clientName: name,
       clientEmail: email,
       clientCity: city,
       clientCountry: country,
     });
 
-    return json(
-      {
+    return finish('success', {
+      access_code_id: row.access_code_id,
+      trainer_id: row.trainer_id,
+      response: {
         valid: true,
-        customer_id: customer.id,
+        customer_id: row.customer_id,
         bc_customer_id: bigCommerceCustomerId,
-        session_token: mintSessionToken(customer.id),
+        session_token: mintSessionToken(row.customer_id),
       },
-      200,
-      origin,
-    );
+    });
   } catch (error) {
-    console.error(error);
-    return json({ error: 'Internal server error' }, 500, origin);
+    // Unhandled — log + audit + graceful 200 so the gate UI sees a parseable
+    // reason instead of an opaque non-2xx.
+    console.error('[validate] unhandled error', error);
+    return finish('server_error', {
+      reason_detail: error instanceof Error ? error.message : String(error),
+      response: { valid: false, reason: 'server_error' satisfies ValidationReason },
+    });
   }
 }
