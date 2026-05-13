@@ -1,7 +1,7 @@
 // src/app/api/mini/partner/summary/route.ts
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { verifyTelegramWebApp } from '@/lib/telegram-auth';
+import { verifyTelegramWebAppFresh } from '@/lib/telegram-auth';
 import {
   fetchTrainerCodes,
   fetchTrainerCommissions,
@@ -52,10 +52,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'server_misconfigured' }, { status: 500 });
   }
 
-  const tgUser = verifyTelegramWebApp(initData, botToken);
-  if (!tgUser) {
+  const verify = verifyTelegramWebAppFresh(initData, botToken);
+  if (!verify.ok) {
+    if (verify.reason === 'expired_auth_data') {
+      return NextResponse.json(
+        {
+          error: 'expired_auth_data',
+          message: 'Please reopen the Mini App',
+        },
+        { status: 401 },
+      );
+    }
     return NextResponse.json({ error: 'invalid_init_data' }, { status: 401 });
   }
+  const tgUser = verify.user;
 
   const supabase = createServiceClient();
 

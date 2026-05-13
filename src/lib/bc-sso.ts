@@ -12,7 +12,7 @@ export interface BcLoginPayload {
   iss: string;
   iat: number;
   jti: string;
-  operation: 'customer_logon';
+  operation: 'customer_login';
   store_hash: string;
   customer_id: number;
   redirect_to?: string;
@@ -34,7 +34,7 @@ export function buildBcLoginJwt(
     iss: cfg.clientId,
     iat: Math.floor(Date.now() / 1000),
     jti: crypto.randomUUID(),
-    operation: 'customer_logon',
+    operation: 'customer_login',
     store_hash: cfg.storeHash,
     customer_id: customerId,
     ...(redirectTo ? { redirect_to: redirectTo } : {}),

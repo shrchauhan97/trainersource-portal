@@ -21,7 +21,7 @@ describe('buildBcLoginJwt', () => {
     }) as jwt.JwtPayload;
 
     expect(decoded.iss).toBe('test_client_id');
-    expect(decoded.operation).toBe('customer_logon');
+    expect(decoded.operation).toBe('customer_login');
     expect(decoded.store_hash).toBe('yemcm3khpa');
     expect(decoded.customer_id).toBe(12345);
     expect(decoded.redirect_to).toBe('/cart.php');

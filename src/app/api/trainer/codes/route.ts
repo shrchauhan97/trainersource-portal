@@ -16,10 +16,10 @@ interface CodeRow {
 }
 
 export async function GET(request: Request) {
-  const auth = requireBotSecret(request);
+  const supabase = createServiceClient();
+  const auth = await requireBotSecret(request, supabase);
   if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
 
-  const supabase = createServiceClient();
   const { data: codes, error: codesError } = await supabase
     .from('access_codes')
     .select('id, code, label, status, issued_via, created_at, expires_at')

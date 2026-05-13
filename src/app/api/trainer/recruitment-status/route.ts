@@ -5,12 +5,12 @@ import { createServiceClient } from '@/lib/supabase/service';
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
-  const auth = requireBotSecret(request);
+  const supabase = createServiceClient();
+  const auth = await requireBotSecret(request, supabase);
   if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
 
   const threshold = Number(process.env.RECRUITMENT_THRESHOLD ?? 10);
 
-  const supabase = createServiceClient();
   const { count, error } = await supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })

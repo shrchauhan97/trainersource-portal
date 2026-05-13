@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
-import { verifyTelegramWebApp } from '@/lib/telegram-auth';
+import {
+  verifyTelegramWebApp,
+  verifyTelegramWebAppFresh,
+  MAX_AUTH_AGE_SECONDS,
+  CLOCK_SKEW_SECONDS,
+} from '@/lib/telegram-auth';
 
 // Build a valid initData string for the test bot token — mirrors what
 // Telegram's WebApp runtime produces in window.Telegram.WebApp.initData.
@@ -85,5 +90,75 @@ describe('verifyTelegramWebApp', () => {
   it('returns null for empty bot token', () => {
     const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER);
     expect(verifyTelegramWebApp(initData, '')).toBeNull();
+  });
+});
+
+describe('verifyTelegramWebAppFresh', () => {
+  it('accepts a freshly signed initData within the 5-minute window', () => {
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER);
+    const result = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.user.id).toBe(777);
+      expect(result.user.first_name).toBe('Test');
+    }
+  });
+
+  it('rejects initData with auth_date older than MAX_AUTH_AGE_SECONDS as expired', () => {
+    const stale = Math.floor(Date.now() / 1000) - (MAX_AUTH_AGE_SECONDS + 5);
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER, stale);
+    const result = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('expired_auth_data');
+  });
+
+  it('accepts initData with auth_date right at the edge of the window', () => {
+    // Pick an auth_date that is MAX_AUTH_AGE_SECONDS - 5 seconds in the past.
+    // It should comfortably pass the freshness check.
+    const recent = Math.floor(Date.now() / 1000) - (MAX_AUTH_AGE_SECONDS - 5);
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER, recent);
+    const result = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts mild clock skew (auth_date a few seconds in the future)', () => {
+    const future = Math.floor(Date.now() / 1000) + (CLOCK_SKEW_SECONDS - 10);
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER, future);
+    const result = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects auth_date far in the future (beyond clock skew) as expired', () => {
+    const future = Math.floor(Date.now() / 1000) + CLOCK_SKEW_SECONDS + 30;
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER, future);
+    const result = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('expired_auth_data');
+  });
+
+  it('reports invalid_signature when HMAC fails (does not leak as expired)', () => {
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER);
+    const tampered = initData.replace(/hash=([a-f0-9])/, (_m, c) =>
+      `hash=${c === '0' ? '1' : '0'}`,
+    );
+    const result = verifyTelegramWebAppFresh(tampered, TEST_BOT_TOKEN);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid_signature');
+  });
+
+  it('honors a caller-supplied maxAgeSeconds override (wider window)', () => {
+    // 10 minutes old — would fail the 5-min default, should pass with a 1h override.
+    const tenMinAgo = Math.floor(Date.now() / 1000) - 600;
+    const initData = buildInitData(TEST_BOT_TOKEN, TEST_USER, tenMinAgo);
+    const tight = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN);
+    expect(tight.ok).toBe(false);
+    const loose = verifyTelegramWebAppFresh(initData, TEST_BOT_TOKEN, {
+      maxAgeSeconds: 3600,
+    });
+    expect(loose.ok).toBe(true);
+  });
+
+  it('uses MAX_AUTH_AGE_SECONDS = 300 by default (matches Telegram guidance)', () => {
+    expect(MAX_AUTH_AGE_SECONDS).toBe(300);
   });
 });

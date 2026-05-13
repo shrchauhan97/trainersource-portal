@@ -21,7 +21,9 @@ export interface VerifiedTelegramUser {
   auth_date: number;
 }
 
-const MAX_AUTH_AGE_SECONDS = 86_400;
+// Login Widget callbacks are accepted for 24h (separate from Mini App initData,
+// which uses the tighter MAX_AUTH_AGE_SECONDS replay window further down).
+const LOGIN_WIDGET_MAX_AUTH_AGE_SECONDS = 86_400;
 
 /**
  * Verify a Telegram Login Widget callback.
@@ -39,7 +41,7 @@ export function verifyLoginWidget(
   if (typeof payload.auth_date !== 'number') return null;
 
   const now = Math.floor(Date.now() / 1000);
-  if (now - payload.auth_date > MAX_AUTH_AGE_SECONDS) return null;
+  if (now - payload.auth_date > LOGIN_WIDGET_MAX_AUTH_AGE_SECONDS) return null;
 
   const { hash, ...rest } = payload as LoginWidgetPayload;
 
@@ -144,4 +146,69 @@ export function getAuthDateSeconds(initData: string): number | null {
   if (!raw) return null;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Default Mini App initData freshness window (5 minutes), per Telegram's own
+ * replay-attack guidance. Used by `verifyTelegramWebAppFresh` and route
+ * handlers that need replay protection on captured initData.
+ *
+ * Note: the older reorder routes intentionally use a 24h window — keep their
+ * local constants in place. New routes should prefer this default.
+ */
+export const MAX_AUTH_AGE_SECONDS = 300;
+
+/**
+ * Clock-skew tolerance (in seconds) for auth_date values that appear to be in
+ * the future relative to the server clock. Telegram's runtime sets auth_date
+ * from the client side, so trusting it down to the second invites spurious
+ * failures on devices with a slightly fast clock. Matches the existing
+ * reorder-route constant.
+ */
+export const CLOCK_SKEW_SECONDS = 60;
+
+export type WebAppVerifyFailReason =
+  | 'invalid_signature'
+  | 'expired_auth_data';
+
+export type WebAppVerifyResult =
+  | { ok: true; user: TelegramMiniAppUser }
+  | { ok: false; reason: WebAppVerifyFailReason };
+
+/**
+ * Verify Mini App initData *and* enforce a freshness window on the embedded
+ * `auth_date`. Returns a discriminated result so callers can map failures to
+ * appropriate HTTP responses (e.g. 401 + `expired_auth_data` to prompt the
+ * client to reopen the Mini App and obtain a fresh initData string).
+ *
+ * - HMAC failure → `{ ok: false, reason: 'invalid_signature' }`
+ * - Missing/unparseable/too-old/too-far-in-future auth_date →
+ *   `{ ok: false, reason: 'expired_auth_data' }`
+ *
+ * Defaults to `MAX_AUTH_AGE_SECONDS` (5 minutes) per Telegram replay-attack
+ * guidance. Callers that need a wider window (e.g. long-lived reorder flows)
+ * should continue calling `verifyTelegramWebApp` + `getAuthDateSeconds`
+ * directly with their own constants.
+ */
+export function verifyTelegramWebAppFresh(
+  initData: string,
+  botToken: string,
+  options: { maxAgeSeconds?: number; clockSkewSeconds?: number } = {},
+): WebAppVerifyResult {
+  const user = verifyTelegramWebApp(initData, botToken);
+  if (!user) return { ok: false, reason: 'invalid_signature' };
+
+  const maxAge = options.maxAgeSeconds ?? MAX_AUTH_AGE_SECONDS;
+  const skew = options.clockSkewSeconds ?? CLOCK_SKEW_SECONDS;
+  const authDate = getAuthDateSeconds(initData);
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    authDate === null ||
+    authDate > now + skew ||
+    now - authDate > maxAge
+  ) {
+    return { ok: false, reason: 'expired_auth_data' };
+  }
+
+  return { ok: true, user };
 }

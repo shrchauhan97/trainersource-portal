@@ -25,10 +25,9 @@ function nextPayoutDate(ref: Date = new Date()): Date {
 }
 
 export async function GET(request: Request) {
-  const auth = requireBotSecret(request);
-  if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
-
   const supabase = createServiceClient();
+  const auth = await requireBotSecret(request, supabase);
+  if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
 
   const periodStart = currentPeriodStart().toISOString();
 

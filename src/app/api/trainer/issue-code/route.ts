@@ -10,7 +10,8 @@ export const runtime = 'nodejs';
 export { slugFromLabel };
 
 export async function POST(request: Request) {
-  const auth = requireBotSecret(request);
+  const supabase = createServiceClient();
+  const auth = await requireBotSecret(request, supabase);
   if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
 
   let body: { label?: string };
@@ -20,7 +21,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid-json' }, { status: 400 });
   }
 
-  const supabase = createServiceClient();
   const outcome = await issueTrainerCode(supabase, auth.trainerId, body.label ?? '');
 
   if (!outcome.ok) {

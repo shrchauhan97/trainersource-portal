@@ -1,5 +1,14 @@
 // tests/api/trainer-earnings.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import crypto from 'node:crypto';
+
+const SECRET = 'test-secret';
+const TG_USER_ID = '123456789';
+const TRAINER_ID = '11111111-1111-1111-1111-111111111111';
+
+function sign(s: string): string {
+  return crypto.createHmac('sha256', SECRET).update(s).digest('hex');
+}
 
 const commissions = [
   { amount: 25.0, status: 'pending', created_at: '2026-04-19T10:00:00Z' },
@@ -13,6 +22,28 @@ const lastPayout = {
 vi.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
     from: (table: string) => {
+      if (table === 'trainer_telegram_links') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { trainer_id: TRAINER_ID }, error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'trainers') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { status: 'active' }, error: null,
+              }),
+            }),
+          }),
+        };
+      }
       if (table === 'commissions') {
         return {
           select: vi.fn().mockReturnValue({
@@ -41,7 +72,7 @@ vi.mock('@/lib/supabase/service', () => ({
 }));
 
 beforeEach(() => {
-  vi.stubEnv('BOT_PORTAL_SHARED_SECRET', 'test-secret');
+  vi.stubEnv('BOT_PORTAL_SHARED_SECRET', SECRET);
 });
 
 describe('GET /api/trainer/earnings', () => {
@@ -49,8 +80,9 @@ describe('GET /api/trainer/earnings', () => {
     const { GET } = await import('@/app/api/trainer/earnings/route');
     const res = await GET(new Request('https://x/api/trainer/earnings', {
       headers: {
-        'X-Bot-Secret': 'test-secret',
-        'X-Trainer-Id': '11111111-1111-1111-1111-111111111111',
+        'X-Bot-Secret': SECRET,
+        'X-Telegram-User-Id': TG_USER_ID,
+        'X-Bot-Sig': sign(TG_USER_ID),
       },
     }));
     expect(res.status).toBe(200);
