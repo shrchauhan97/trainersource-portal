@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // indexed (it requires an authenticated trainer session).
 export const metadata: Metadata = {
   title: {
-    default: 'TrainerSource Dashboard',
+    absolute: 'TrainerSource Dashboard',
     template: '%s — TrainerSource Dashboard',
   },
   robots: { index: false, follow: false },

@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 // only resolve for the logged-in trainer they belong to.
 export const metadata: Metadata = {
   title: {
-    default: 'TrainerSource Onboarding',
+    absolute: 'TrainerSource Onboarding',
     template: '%s — TrainerSource Onboarding',
   },
   robots: { index: false, follow: false },

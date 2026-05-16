@@ -10,7 +10,7 @@ import { getAdminPageContext } from '@/components/admin/data';
 // a URL.
 export const metadata: Metadata = {
   title: {
-    default: 'TrainerSource Admin',
+    absolute: 'TrainerSource Admin',
     template: '%s — TrainerSource Admin',
   },
   description: 'Admin control center for trainers, orders, commissions, payouts, and codes.',

@@ -8,8 +8,8 @@ import MiniAppThemeBridge from './MiniAppThemeBridge';
 // the pages are only useful inside a Telegram WebView context.
 export const metadata: Metadata = {
   title: {
-    default: 'Ultimate Peptides — Concierge',
-    template: '%s — Ultimate Peptides',
+    absolute: 'Ultimate Peptides — Concierge',
+    template: null,
   },
   robots: { index: false, follow: false },
 };
