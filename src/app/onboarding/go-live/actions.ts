@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { OnboardingStep } from '../_lib/types';
 
@@ -36,11 +37,14 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
 
   // Verify the trainer record belongs to the signed-in user before mutating
   // anything; the trainerId arrives from the client and must be authenticated.
+  // T2.13: case-insensitive email match — historic mixed-case trainer rows
+  // still resolve against the lower-cased Supabase Auth session email.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer, error: trainerLookupError } = await supabase
     .from('trainers')
     .select('id, status')
     .eq('id', trainerId)
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle();
 
   if (trainerLookupError || !trainer) {

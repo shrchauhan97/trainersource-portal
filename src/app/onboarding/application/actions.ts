@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { checkApplicationDetails } from '../_lib/applicationValidation';
 import { safeError } from '../_lib/errors';
@@ -23,10 +24,12 @@ async function resolveTrainerForOnboarding(): Promise<
   } = await supabase.auth.getUser();
   if (!user?.email) return { error: 'You must be signed in.' };
 
+  // T2.13: case-insensitive — see note in src/app/onboarding/_lib/state.ts.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer, error } = await supabase
     .from('trainers')
     .select('id, status, country, city')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle();
   if (error) return { error: safeError('resolveTrainerForOnboarding', error) };
   if (!trainer) return { error: 'Trainer not found.' };

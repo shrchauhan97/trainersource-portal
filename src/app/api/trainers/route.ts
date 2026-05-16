@@ -1,3 +1,4 @@
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { Admin, Trainer, TrainerStatus } from '@/lib/types';
 
@@ -21,10 +22,12 @@ async function requireAdmin() {
     return { supabase, admin: null };
   }
 
+  // T2.13: case-insensitive lookup for historic mixed-case admin rows.
+  const email = normalizeEmail(user.email) ?? user.email;
   const { data: admin, error: adminError } = await supabase
     .from('admins')
     .select('*')
-    .eq('email', user.email)
+    .ilike('email', email)
     .maybeSingle<Admin>();
 
   if (adminError) {

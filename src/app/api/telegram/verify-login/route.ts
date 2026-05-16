@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { normalizeEmail } from '@/lib/auth';
 import { verifyLoginWidget, type LoginWidgetPayload } from '@/lib/telegram-auth';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
@@ -61,10 +62,14 @@ export async function GET(request: Request) {
   if (!user?.email) {
     return NextResponse.json({ error: 'no-portal-session' }, { status: 401 });
   }
+  // T2.13: case-insensitive email match. Trainer rows that pre-date email
+  // normalization may be stored mixed-case; the Auth session email is
+  // lower-cased, so a strict .eq lookup misses them.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle<{ id: string }>();
   if (!trainer) {
     return NextResponse.json({ error: 'not-a-trainer' }, { status: 403 });

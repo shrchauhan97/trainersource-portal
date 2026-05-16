@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { getCurrentAdminEmail } from '@/lib/auth';
+import { getCurrentAdminEmail, normalizeEmail } from '@/lib/auth';
 import { deleteBcCustomer } from '@/lib/bc-rest-client';
 import {
   isRemovableReason,
@@ -42,11 +42,13 @@ async function requireAdmin() {
     redirect('/login');
   }
 
-  const email = user.email.trim().toLowerCase();
+  // T2.13: case-insensitive lookup; some admin rows pre-date email
+  // normalization and may be stored mixed-case.
+  const email = normalizeEmail(user.email) ?? user.email;
   const { data: admin, error: adminError } = await supabase
     .from('admins')
     .select('id, role')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle();
 
   if (adminError) {

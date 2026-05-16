@@ -1,5 +1,6 @@
 'use server';
 
+import { normalizeEmail } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { COMMISSION_FIRST_SALE, COMMISSION_REORDER, MAX_CLIENTS_DEFAULT } from '@/lib/constants';
 
@@ -38,13 +39,19 @@ export async function submitApplication(formData: FormData) {
   const supabase = createServiceClient();
 
   const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
+  const rawEmail = formData.get('email') as string;
   const phone = formData.get('phone') as string;
   const country = formData.get('country') as string;
   const city = formData.get('city') as string;
   const niche = formData.get('niche') as string;
   const social_media = formData.get('socialMedia') as string;
-  
+
+  // T2.13: normalise email at insert time so every stored row is lowercase.
+  // Without this, "John@Example.com" lands in trainers.email mixed-case and
+  // every subsequent `.eq('email', user.email)` (Supabase Auth always
+  // lower-cases session emails) misses.
+  const email = normalizeEmail(rawEmail) ?? '';
+
   if (!name || !email || !country || !city) {
     const missing = [
       !name && 'Full name',

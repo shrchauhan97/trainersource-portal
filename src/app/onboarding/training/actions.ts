@@ -1,5 +1,6 @@
 'use server';
 
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { advanceOnboardingStep } from '../_lib/state';
@@ -20,10 +21,12 @@ async function resolveOnboardingTrainer() {
     return { error: 'You must be signed in.' as const };
   }
 
+  // T2.13: case-insensitive — see note in src/app/onboarding/_lib/state.ts.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id, status')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle();
 
   if (!trainer) {

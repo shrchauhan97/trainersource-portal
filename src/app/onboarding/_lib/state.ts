@@ -1,4 +1,5 @@
 import 'server-only';
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import type {
@@ -21,12 +22,15 @@ export async function loadTrainerOnboardingState(): Promise<TrainerOnboardingSta
     redirect('/login');
   }
 
+  // T2.13: case-insensitive — historic mixed-case rows from /apply pre-fix
+  // still resolve against the lower-cased Supabase Auth session email.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email ?? '';
   const { data: trainer } = await supabase
     .from('trainers')
     .select(
       'id, name, email, city, country, status, onboarding_step',
     )
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle();
 
   if (!trainer) {

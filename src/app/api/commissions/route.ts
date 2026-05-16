@@ -1,3 +1,4 @@
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { Admin, Trainer } from '@/lib/types';
 
@@ -26,9 +27,12 @@ async function getActor() {
     return { supabase, admin: null, trainer: null };
   }
 
+  // T2.13: case-insensitive match so historic mixed-case admin/trainer rows
+  // still resolve from the lower-cased Supabase Auth session email.
+  const email = normalizeEmail(user.email) ?? user.email;
   const [adminResult, trainerResult] = await Promise.all([
-    supabase.from('admins').select('*').eq('email', user.email).maybeSingle<Admin>(),
-    supabase.from('trainers').select('*').eq('email', user.email).maybeSingle<Trainer>(),
+    supabase.from('admins').select('*').ilike('email', email).maybeSingle<Admin>(),
+    supabase.from('trainers').select('*').ilike('email', email).maybeSingle<Trainer>(),
   ]);
 
   if (adminResult.error) {

@@ -49,31 +49,30 @@ function setupLookups(opts: {
   trainerError?: { message: string } | null;
 }) {
   serviceFromMock.mockImplementation((table: string) => {
+    // T2.13: production code switched from `.eq('email', ...)` to
+    // `.ilike('email', ...)` for case-insensitive matching. The mock supports
+    // both methods so the same chainable stub works either way.
     if (table === 'admins') {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data: opts.admin ?? null,
-                error: opts.adminError ?? null,
-              }),
-          }),
-        }),
+      const result = Promise.resolve({
+        data: opts.admin ?? null,
+        error: opts.adminError ?? null,
+      });
+      const chain = {
+        eq: () => ({ maybeSingle: () => result }),
+        ilike: () => ({ maybeSingle: () => result }),
       };
+      return { select: () => chain };
     }
     if (table === 'trainers') {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data: opts.trainer ?? null,
-                error: opts.trainerError ?? null,
-              }),
-          }),
-        }),
+      const result = Promise.resolve({
+        data: opts.trainer ?? null,
+        error: opts.trainerError ?? null,
+      });
+      const chain = {
+        eq: () => ({ maybeSingle: () => result }),
+        ilike: () => ({ maybeSingle: () => result }),
       };
+      return { select: () => chain };
     }
     throw new Error(`unexpected table: ${table}`);
   });
@@ -240,6 +239,32 @@ describe('GET /api/demo-login', () => {
     expect(verifyOtpMock).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'trainer@x.com', token: '654321', type: 'email' }),
     );
+  });
+
+  it('lower-cases mixed-case email at lookup time (T2.13)', async () => {
+    // Mixed-case input should still resolve a lower-case trainer row. The
+    // route lower-cases the email before lookup AND uses .ilike, so even a
+    // historic mixed-case DB row would match.
+    setupLookups({ admin: null, trainer: { id: 't-9' } });
+    generateLinkMock.mockResolvedValueOnce({
+      data: { properties: { email_otp: '777777' } },
+      error: null,
+    });
+    verifyOtpMock.mockResolvedValueOnce({ error: null });
+
+    const { GET } = await import('@/app/api/demo-login/route');
+    const res = await GET(
+      buildRequest({
+        email: 'Trainer@X.com',
+        secret: 'top-secret-demo-token',
+      }),
+    );
+    expect(res.status).toBe(307);
+    // generateLink sees the normalised lower-case form.
+    expect(generateLinkMock).toHaveBeenCalledWith({
+      type: 'magiclink',
+      email: 'trainer@x.com',
+    });
   });
 
   it('happy path with no `next` defaults to /dashboard', async () => {

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { normalizeEmail } from '@/lib/auth';
 import { CODE_EXPIRY_DAYS, CODE_LENGTH } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -65,10 +66,13 @@ async function getTrainerBySession() {
     redirect('/login');
   }
 
+  // T2.13: case-insensitive — historic mixed-case trainer rows still resolve
+  // against the lower-cased Supabase Auth session email.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer, error } = await supabase
     .from('trainers')
     .select('*')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .single();
 
   if (error || !trainer) {

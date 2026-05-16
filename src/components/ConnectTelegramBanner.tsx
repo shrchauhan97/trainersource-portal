@@ -1,4 +1,5 @@
 // Server component — queries trainer link status, renders widget when unlinked.
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { TelegramLoginWidget } from './TelegramLoginWidget';
@@ -10,10 +11,14 @@ export async function ConnectTelegramBanner() {
   } = await supabase.auth.getUser();
   if (!user?.email) return null;
 
+  // T2.13: case-insensitive lookup so a trainer whose row was inserted before
+  // email-normalization rolled out (mixed-case "John@Example.com") still
+  // matches the lower-cased Supabase Auth session email.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .maybeSingle<{ id: string }>();
   if (!trainer) {
     // Logged-in user is an admin (or some other role) with no trainer row.

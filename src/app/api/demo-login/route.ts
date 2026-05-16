@@ -146,10 +146,12 @@ export async function GET(request: Request) {
   // Refuse admin emails outright — demo-login must never bridge to admin.
   // Checked against `admins` table (the authoritative source — see
   // src/lib/auth.ts:34-39 and src/app/api/trainers/route.ts:24-29).
+  // T2.13: case-insensitive in case a historic admin row stored mixed-case
+  // email (pre-normalization). `email` itself is already lower-cased above.
   const { data: adminRow, error: adminErr } = await service
     .from('admins')
     .select('id')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle<{ id: string }>();
 
   if (adminErr) {
@@ -164,10 +166,11 @@ export async function GET(request: Request) {
 
   // The email MUST resolve to a trainer. 404 (not 401/403) so we don't
   // leak which auth.users emails exist.
+  // T2.13: case-insensitive — see admin lookup above.
   const { data: trainerRow, error: trainerErr } = await service
     .from('trainers')
     .select('id')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle<{ id: string }>();
 
   if (trainerErr) {

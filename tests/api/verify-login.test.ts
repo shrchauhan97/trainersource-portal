@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
 
 // Service-role client mocks the `link_telegram_to_trainer` RPC. The portal
-// client mocks `auth.getUser` + a `from('trainers').select(...).eq(...).maybeSingle()`
-// chain that resolves to the authenticated trainer's row.
+// client mocks `auth.getUser` + a `from('trainers').select(...).ilike(...).maybeSingle()`
+// chain that resolves to the authenticated trainer's row. T2.13 switched the
+// lookup from `.eq` to `.ilike` for case-insensitive matching; the mock keeps
+// both methods chainable so the same stub works either way.
 const mockRpc = vi.fn();
 const mockServiceFrom = vi.fn();
 
@@ -11,9 +13,11 @@ const mockTrainerMaybeSingle = vi.fn().mockResolvedValue({
   data: { id: 't-uuid', email: 'sarah@x.com' },
   error: null,
 });
+const mockIlike = vi.fn().mockReturnThis();
 const mockPortalFrom = vi.fn(() => ({
   select: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
+  ilike: mockIlike,
   maybeSingle: mockTrainerMaybeSingle,
 }));
 const mockAuth = {
@@ -34,6 +38,7 @@ beforeEach(() => {
   vi.stubEnv('TELEGRAM_BOT_TOKEN', '1234567:ABCDEF');
   mockRpc.mockReset();
   mockServiceFrom.mockReset();
+  mockIlike.mockClear();
   // Default: RPC reports a fresh link succeeded. Individual tests override.
   mockRpc.mockResolvedValue({
     data: [
@@ -151,5 +156,21 @@ describe('GET /api/telegram/verify-login', () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe('link-failed');
+  });
+
+  it('looks up the trainer row case-insensitively (T2.13)', async () => {
+    // Supabase Auth always lower-cases session emails, but a historic trainer
+    // row may have been inserted before normalisation (mixed-case). Verify
+    // the route calls .ilike with the lower-cased session email so the lookup
+    // hits regardless of how the row was stored.
+    mockAuth.getUser.mockResolvedValueOnce({
+      data: { user: { email: 'sarah@x.com' } },
+      error: null,
+    });
+    const { GET } = await import('@/app/api/telegram/verify-login/route');
+    const res = await GET(new Request(makeSignedUrl(999)));
+    expect(res.status).toBe(302);
+    // The trainer lookup must use ilike (case-insensitive), not eq.
+    expect(mockIlike).toHaveBeenCalledWith('email', 'sarah@x.com');
   });
 });

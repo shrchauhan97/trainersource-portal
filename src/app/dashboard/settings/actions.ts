@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 
 export type TrainerProfileFormValues = {
@@ -39,10 +40,13 @@ export async function updateTrainerProfile(
     };
   }
 
+  // T2.13: case-insensitive — historic mixed-case trainer rows still resolve
+  // against the lower-cased Supabase Auth session email.
+  const sessionEmail = normalizeEmail(user.email) ?? user.email;
   const { data: trainer, error: trainerLookupError } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .ilike('email', sessionEmail)
     .single();
 
   if (trainerLookupError || !trainer) {

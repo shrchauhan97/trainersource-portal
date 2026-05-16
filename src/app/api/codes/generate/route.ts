@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
+import { normalizeEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { CODE_EXPIRY_DAYS, CODE_LENGTH } from '@/lib/constants';
 import type { Trainer } from '@/lib/types';
@@ -39,10 +40,12 @@ async function requireTrainer() {
     return { supabase, trainer: null };
   }
 
+  // T2.13: case-insensitive lookup for historic mixed-case trainer rows.
+  const email = normalizeEmail(user.email) ?? user.email;
   const { data: trainer, error: trainerError } = await supabase
     .from('trainers')
     .select('*')
-    .eq('email', user.email)
+    .ilike('email', email)
     .maybeSingle<Trainer>();
 
   if (trainerError) {
