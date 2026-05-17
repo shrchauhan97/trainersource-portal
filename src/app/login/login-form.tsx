@@ -1,33 +1,131 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 
-const errorMessages: Record<string, string> = {
+import { checkEmailAllowed, type CheckEmailResult } from './actions';
+
+const callbackErrorMessages: Record<string, string> = {
   auth_callback_failed: 'We could not complete sign in. Please request a new magic link.',
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
 };
+
+const checkErrorMessages: Record<NonNullable<Exclude<CheckEmailResult, { allowed: true }>['reason']>, string> = {
+  not_authorized: 'Your email is not authorized to access TrainerSource.',
+  suspended: 'Your account has been suspended. Contact support to restore access.',
+  rate_limited: 'Too many attempts. Please wait a minute and try again.',
+  invalid: 'Enter a valid email address.',
+};
+
+type Step = 'email' | 'password';
 
 type LoginFormProps = {
   errorKey?: string;
 };
 
 export default function LoginForm({ errorKey }: LoginFormProps) {
+  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+  const [magicSent, setMagicSent] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const callbackError = useMemo(() => {
-    if (!errorKey) {
-      return null;
+    if (!errorKey) return null;
+    return callbackErrorMessages[errorKey] ?? 'Something went wrong. Please try again.';
+  }, [errorKey]);
+
+  function resetMessages() {
+    setError(null);
+    setInfo(null);
+    setMagicSent(false);
+  }
+
+  function handleEmailSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    resetMessages();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Enter your email address.');
+      return;
     }
 
-    return errorMessages[errorKey] ?? 'Something went wrong. Please try again.';
-  }, [errorKey]);
+    startTransition(async () => {
+      const result = await checkEmailAllowed(normalizedEmail);
+      if (!result.allowed) {
+        setError(checkErrorMessages[result.reason]);
+        return;
+      }
+      setEmail(normalizedEmail);
+      setHasPassword(result.hasPassword);
+      setStep('password');
+
+      if (!result.hasPassword) {
+        await sendMagicLink(normalizedEmail);
+      }
+    });
+  }
+
+  async function sendMagicLink(addr: string, intent?: 'reset') {
+    setIsSubmitting(true);
+    resetMessages();
+    try {
+      const supabase = createClient();
+      const params = new URLSearchParams();
+      if (intent) params.set('intent', intent);
+      const emailRedirectTo = `${window.location.origin}/auth/callback${params.size ? `?${params}` : ''}`;
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: addr,
+        options: { emailRedirectTo },
+      });
+      if (otpError) {
+        setError(otpError.message);
+        return;
+      }
+      setMagicSent(true);
+      setInfo(
+        intent === 'reset'
+          ? 'Check your email for a link to reset your password.'
+          : 'Check your email for a link to finish signing in.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    resetMessages();
+
+    if (!password) {
+      setError('Enter your password.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const supabase = createClient();
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError || !data.session) {
+        setError('Incorrect password. Try again or use a magic link.');
+        return;
+      }
+      window.location.href = '/dashboard';
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface px-6 py-16 text-clinical-slate">
@@ -43,80 +141,128 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
             TrainerSource Access
           </div>
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-clinical-slate sm:text-4xl">
-            Sign in with your email
+            {step === 'email' ? 'Sign in with your email' : 'Welcome back'}
           </h1>
           <p className="text-sm leading-6 text-clinical-slate/70 sm:text-base">
-            Enter the email connected to your admin or trainer account and we&apos;ll send you a secure magic link.
+            {step === 'email'
+              ? "Enter the email connected to your admin or trainer account."
+              : hasPassword
+                ? `Signing in as ${email}.`
+                : `We've sent a magic link to ${email}. Open it on this device to finish setting up your account.`}
           </p>
         </div>
 
-        <form
-          onSubmit={async (event) => {
-            event.preventDefault();
-
-            const normalizedEmail = email.trim().toLowerCase();
-
-            if (!normalizedEmail) {
-              setError('Enter your email address to receive a magic link.');
-              setIsSuccess(false);
-              return;
-            }
-
-            setIsLoading(true);
-            setError(null);
-            setIsSuccess(false);
-
-            const supabase = createClient();
-            const redirectTo = `${window.location.origin}/auth/callback`;
-            const { error: signInError } = await supabase.auth.signInWithOtp({
-              email: normalizedEmail,
-              options: {
-                emailRedirectTo: redirectTo,
-              },
-            });
-
-            if (signInError) {
-              setError(signInError.message);
-              setIsLoading(false);
-              return;
-            }
-
-            setIsSuccess(true);
-            setEmail(normalizedEmail);
-            setIsLoading(false);
-          }}
-          className="mt-8 space-y-5"
-        >
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-semibold text-clinical-slate">
-              Email address
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setError(null);
+        {step === 'email' ? (
+          <form onSubmit={handleEmailSubmit} className="mt-8 space-y-5">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-semibold text-clinical-slate">
+                Email address
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
+                placeholder="you@example.com"
+                className="w-full rounded-2xl border border-clinical-slate/15 bg-surface px-4 py-3 text-base text-clinical-slate outline-none transition placeholder:text-clinical-slate/40 focus:border-hyrox-orange focus:ring-4 focus:ring-hyrox-orange/15"
+                disabled={isPending}
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-hyrox-orange px-4 py-3 font-semibold text-white transition hover:bg-[#e64a19] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isPending ? 'Checking…' : 'Continue'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handlePasswordSubmit} className="mt-8 space-y-5">
+            {hasPassword ? (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-semibold text-clinical-slate">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError(null);
+                    }}
+                    placeholder="Your password"
+                    className="w-full rounded-2xl border border-clinical-slate/15 bg-surface px-4 py-3 text-base text-clinical-slate outline-none transition placeholder:text-clinical-slate/40 focus:border-hyrox-orange focus:ring-4 focus:ring-hyrox-orange/15"
+                    disabled={isSubmitting}
+                    required
+                    minLength={12}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-hyrox-orange px-4 py-3 font-semibold text-white transition hover:bg-[#e64a19] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isSubmitting ? 'Signing in…' : 'Sign in'}
+                </button>
+                <div className="flex items-center justify-between text-sm">
+                  <button
+                    type="button"
+                    onClick={() => sendMagicLink(email)}
+                    disabled={isSubmitting}
+                    className="font-medium text-hyrox-orange hover:underline disabled:opacity-50"
+                  >
+                    Email me a link instead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendMagicLink(email, 'reset')}
+                    disabled={isSubmitting}
+                    className="font-medium text-clinical-slate/70 hover:underline disabled:opacity-50"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3 text-sm text-clinical-slate/70">
+                <p>
+                  No password is set on this account yet. We&apos;ve emailed you a magic link — open it to
+                  finish setting up.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => sendMagicLink(email)}
+                  disabled={isSubmitting || magicSent}
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-clinical-slate/15 px-4 py-3 font-semibold text-clinical-slate transition hover:border-hyrox-orange hover:text-hyrox-orange disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isSubmitting ? 'Sending…' : magicSent ? 'Resend magic link' : 'Send magic link'}
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setStep('email');
+                setPassword('');
+                resetMessages();
               }}
-              placeholder="you@example.com"
-              className="w-full rounded-2xl border border-clinical-slate/15 bg-surface px-4 py-3 text-base text-clinical-slate outline-none transition placeholder:text-clinical-slate/40 focus:border-hyrox-orange focus:ring-4 focus:ring-hyrox-orange/15"
-              disabled={isLoading}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="inline-flex w-full items-center justify-center rounded-2xl bg-hyrox-orange px-4 py-3 font-semibold text-white transition hover:bg-[#e64a19] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isLoading ? 'Sending magic link...' : 'Send Magic Link'}
-          </button>
-        </form>
+              className="text-xs font-medium uppercase tracking-[0.18em] text-clinical-slate/50 hover:text-clinical-slate"
+            >
+              ← Use a different email
+            </button>
+          </form>
+        )}
 
         {error ? (
           <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -130,9 +276,9 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
           </div>
         ) : null}
 
-        {isSuccess ? (
+        {info ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Check your email for the magic link. Open it on this device to finish signing in.
+            {info}
           </div>
         ) : null}
       </div>

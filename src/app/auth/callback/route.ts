@@ -15,6 +15,7 @@ function getLoginUrl(request: NextRequest, error?: string) {
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
+  const intent = request.nextUrl.searchParams.get('intent');
 
   if (!code) {
     return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
@@ -39,20 +40,28 @@ export async function GET(request: NextRequest) {
 
   const role = await getUserRole(user.email);
 
-  if (role === 'admin') {
-    return NextResponse.redirect(new URL('/admin', request.url));
-  }
-
-  if (role === 'trainer') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
-
   if (role === 'suspended') {
     await supabase.auth.signOut();
     return NextResponse.redirect(getLoginUrl(request, 'suspended'));
   }
 
-  await supabase.auth.signOut();
+  if (role !== 'admin' && role !== 'trainer') {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(getLoginUrl(request, 'not_authorized'));
+  }
 
-  return NextResponse.redirect(getLoginUrl(request, 'not_authorized'));
+  const next = role === 'admin' ? '/admin' : '/dashboard';
+
+  // Reset flow always goes through set-password; first-time logins (no
+  // password set yet) likewise. Password-bearing returning users skip.
+  if (intent === 'reset') {
+    return NextResponse.redirect(new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url));
+  }
+
+  const { data: hasPwd } = await supabase.rpc('user_has_password', { uid: user.id });
+  if (hasPwd !== true) {
+    return NextResponse.redirect(new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url));
+  }
+
+  return NextResponse.redirect(new URL(next, request.url));
 }
