@@ -23,16 +23,25 @@ export async function GET(
     'https://trainer-source.com',
   );
   const deepLink = `${portalBase}/r/${code}`;
-  const buffer = await QRCode.toBuffer(deepLink, {
-    width: 300,
-    margin: 2,
-    color: { dark: '#000000', light: '#ffffff' },
-  });
-  return new Response(buffer as unknown as BodyInit, {
-    status: 200,
-    headers: {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=86400, immutable',
-    },
-  });
+  // Guard against qrcode lib failures (string-too-long, OOM during PNG encode,
+  // native draw issues). Without this the request 500s with no log line, so
+  // future "QR sometimes 500s" tickets are unattributable. The `[qr-route]`
+  // tag matches the project's grep-friendly logging convention.
+  try {
+    const buffer = await QRCode.toBuffer(deepLink, {
+      width: 300,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    return new Response(buffer as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400, immutable',
+      },
+    });
+  } catch (err) {
+    console.error(`[qr-route] QRCode.toBuffer failed for code=${code}`, err);
+    return new Response('qr render failed', { status: 500 });
+  }
 }
