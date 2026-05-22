@@ -13,6 +13,18 @@ interface Card {
   enthusiasm: number;
 }
 
+interface ClassificationRow {
+  id: string;
+  summary: string;
+  representative_quote: string;
+  enthusiasm: number;
+  forum_threads: {
+    source: string;
+    thread_title: string;
+    thread_url: string;
+  };
+}
+
 // CORS allowlist for the cross-origin widget fetch from the BC storefront.
 // The endpoint serves public, non-sensitive classifier output (no PII, no
 // auth state); allow the UP storefront and its preview/staging domains.
@@ -83,7 +95,8 @@ export async function GET(
       return jsonResponse({ cards: [] }, { origin });
     }
 
-    const cards: Card[] = (data ?? []).map((row: any) => ({
+    const rows = (data ?? []) as unknown as ClassificationRow[];
+    const cards: Card[] = rows.map((row) => ({
       summary: row.summary,
       quote: row.representative_quote,
       source: row.forum_threads.source,

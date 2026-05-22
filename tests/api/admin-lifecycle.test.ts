@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Loose Supabase query-builder mock shape. The actions under test exercise a
+// handful of chained methods; modelling the full PostgrestFilterBuilder isn't
+// worth it for these tests, so a deliberately-narrow recursive interface
+// keeps the mocks readable without sprinkling `any`. All chain methods are
+// optional so individual tests can stub only the surface their code path
+// actually touches.
+type MockResult = Promise<{ data?: unknown; error: { message: string } | null }>;
+interface MockChain {
+  select?: () => MockChain;
+  eq?: () => MockChain;
+  in?: () => MockChain;
+  update?: () => MockChain;
+  delete?: () => MockChain;
+  insert?: (args?: unknown) => MockResult;
+  maybeSingle?: () => MockResult;
+  _last?: unknown;
+}
+
 // Mock the service-role client factory and auth helper BEFORE importing the action
 const mockFrom = vi.fn();
 vi.mock('@/lib/supabase/service', () => ({
@@ -77,7 +95,7 @@ describe('removeCustomer', () => {
     // is faked so we can assert on the set of calls the action makes.
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain,
         eq: () => chain,
         in: () => chain,
@@ -118,7 +136,7 @@ describe('suspendTrainer', () => {
   it('sets trainers.status=suspended and logs event', async () => {
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain,
         update: () => { calls.push({ table, op: 'update' }); return chain; },
         insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
@@ -169,10 +187,10 @@ describe('removeTrainer', () => {
   it('revokes active access codes and logs to_status=removed', async () => {
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain, in: () => chain,
         update: () => { calls.push({ table, op: 'update' }); return chain; },
-        insert: (args: unknown) => { calls.push({ table, op: 'insert' }); (chain as any)._last = args; return Promise.resolve({ error: null }); },
+        insert: (args?: unknown) => { calls.push({ table, op: 'insert' }); chain._last = args; return Promise.resolve({ error: null }); },
         maybeSingle: () => Promise.resolve({
           data: table === 'admins'
             ? { id: 'a1', email: 'x', name: 'X', role: 'superadmin' }
@@ -197,7 +215,7 @@ describe('restoreCustomer', () => {
   it('flips status back to active and logs event', async () => {
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain,
         update: () => { calls.push({ table, op: 'update' }); return chain; },
         insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
@@ -220,7 +238,7 @@ describe('restoreCustomer', () => {
 
   it('refuses to restore a removed customer (only suspended → active)', async () => {
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain,
         maybeSingle: () => Promise.resolve({
           data: table === 'admins'
@@ -242,7 +260,7 @@ describe('restoreTrainer', () => {
   it('flips trainer status back to active', async () => {
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain,
         update: () => { calls.push({ table, op: 'update' }); return chain; },
         insert: () => { calls.push({ table, op: 'insert' }); return Promise.resolve({ error: null }); },
@@ -268,7 +286,7 @@ describe('removeCustomer BC cascade', () => {
   it('calls deleteBcCustomer when bc_customer_id is present', async () => {
     const calls: Array<{ table: string; op: string }> = [];
     mockFrom.mockImplementation((table: string) => {
-      const chain: any = {
+      const chain: MockChain = {
         select: () => chain, eq: () => chain, in: () => chain,
         update: () => { calls.push({ table, op: 'update' }); return chain; },
         delete: () => { calls.push({ table, op: 'delete' }); return chain; },

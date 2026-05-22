@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
   // Count redemptions per code: join via customers.access_code_id
   const codeIds = (codes ?? []).map((c) => c.id);
-  let usageByCode = new Map<string, number>();
+  const usageByCode = new Map<string, number>();
   if (codeIds.length > 0) {
     const { data: custRows } = await supabase
       .from('customers')
