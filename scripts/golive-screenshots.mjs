@@ -46,7 +46,7 @@ const ROUTES = [
 ];
 
 const browser = await chromium.launch();
-const errors = [];
+const _errors = [];
 const consoleLogs = {};
 
 try {
