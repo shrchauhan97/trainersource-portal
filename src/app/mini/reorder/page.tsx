@@ -42,18 +42,15 @@ type UiState =
   | { kind: 'auth-error' }
   | { kind: 'server-error'; message: string };
 
-// Resolve the initial UI state synchronously at mount: if Telegram never
-// injected initData we already know we're in auth-error and don't want to
-// flash a loading skeleton, but doing that via setState inside an effect
-// triggers a cascading render (react-hooks/set-state-in-effect). The lazy
-// useState initializer below runs once on the client and gives us the right
-// starting state without an extra render pass. SSR returns 'loading' because
-// `window` is undefined; the client then re-evaluates on mount.
+// Always start in 'loading' — SSR and client agree, so there's no hydration
+// mismatch. The Telegram SDK script may not finish loading by React mount on
+// slower networks, so probing window.Telegram in a lazy initializer races with
+// SDK readiness; the effect below runs slightly later (post-hydration), giving
+// the SDK script enough time to populate window.Telegram. The single
+// conditional setState below is a one-shot guard, not a cascading render loop,
+// so the react-hooks/set-state-in-effect warning is a false positive here.
 function initialUiState(): UiState {
-  if (typeof window === 'undefined') return { kind: 'loading' };
-  const initData = (window.Telegram?.WebApp as ReorderTelegramWebApp | undefined)
-    ?.initData;
-  return initData ? { kind: 'loading' } : { kind: 'auth-error' };
+  return { kind: 'loading' };
 }
 
 export default function ReorderPage() {
@@ -69,14 +66,17 @@ export default function ReorderPage() {
     tg.expand();
   }, []);
 
-  // Fetch orders. We only reach the fetch branch when initData was present at
-  // mount (initial state is 'loading'); the auth-error case has already been
-  // resolved by the lazy useState initializer above, so there's no synchronous
-  // setState here that would trigger a cascading render.
+  // Resolve initData → fetch orders, or surface auth-error when SDK never
+  // populated initData. The setState below is a one-shot mount guard for the
+  // no-initData case; it doesn't loop back through render.
   useEffect(() => {
     const tg = getTg();
     const initData = tg?.initData ?? '';
-    if (!initData) return;
+    if (!initData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setState({ kind: 'auth-error' });
+      return;
+    }
     fetch('/api/reorder/orders', {
       headers: { 'X-Telegram-Init-Data': initData },
     })
