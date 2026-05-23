@@ -21,7 +21,7 @@ export async function ConnectTelegramBanner() {
     // what to do after the /iamtrainer magic-link lands them here.
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        You're logged in as <code>{user.email}</code>, which isn't a trainer
+        You&apos;re logged in as <code>{user.email}</code>, which isn&apos;t a trainer
         account. The partner flow (<code>/mycode</code>,{' '}
         <code>/issuecode</code>, <code>/earnings</code>) is trainer-only.{' '}
         <span className="font-semibold">

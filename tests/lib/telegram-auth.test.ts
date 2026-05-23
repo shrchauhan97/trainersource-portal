@@ -41,7 +41,7 @@ describe('verifyLoginWidget', () => {
   });
 
   it('rejects payload without hash', () => {
-    expect(verifyLoginWidget({ id: 1, auth_date: 1 } as any, BOT_TOKEN)).toBeNull();
+    expect(verifyLoginWidget({ id: 1, auth_date: 1 }, BOT_TOKEN)).toBeNull();
   });
 
   it('rejects stale auth_date (>86400s old)', () => {

@@ -778,6 +778,15 @@ export interface CustomerListRow {
   created_at: string;
 }
 
+interface CustomerListJoinRow {
+  id: string;
+  name: string;
+  email: string;
+  status: string | null;
+  created_at: string;
+  trainers: { name: string } | null;
+}
+
 export async function getCustomersList(): Promise<CustomerListRow[]> {
   const supabase = createServiceClient();
   const { data, error } = await supabase
@@ -785,11 +794,12 @@ export async function getCustomersList(): Promise<CustomerListRow[]> {
     .select('id, name, email, status, created_at, trainers(name)')
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r: any) => ({
+  const rows = (data ?? []) as unknown as CustomerListJoinRow[];
+  return rows.map((r) => ({
     id: r.id,
     name: r.name,
     email: r.email,
-    status: r.status ?? 'active',
+    status: (r.status ?? 'active') as CustomerListRow['status'],
     trainer_name: r.trainers?.name ?? null,
     created_at: r.created_at,
   }));
@@ -845,7 +855,29 @@ export async function getCustomerDetail(customerId: string): Promise<{
     .order('created_at', { ascending: false });
   if (evErr) throw new Error(evErr.message);
 
-  const c: any = customer;
+  const c = customer as unknown as {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    country: string;
+    city: string;
+    status: string | null;
+    bigcommerce_customer_id: string | null;
+    access_code_id: string | null;
+    created_at: string;
+    trainers: { id: string; name: string } | null;
+    access_codes: { code: string; status: string } | null;
+  };
+  const eventRows = (events ?? []) as unknown as Array<{
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    reason_category: string;
+    reason_note: string | null;
+    created_at: string;
+    admins: { name: string } | null;
+  }>;
   return {
     customer: {
       id: c.id,
@@ -861,7 +893,7 @@ export async function getCustomerDetail(customerId: string): Promise<{
       access_code: c.access_codes ? { code: c.access_codes.code, status: c.access_codes.status } : null,
       created_at: c.created_at,
     },
-    events: (events ?? []).map((e: any) => ({
+    events: eventRows.map((e) => ({
       id: e.id,
       from_status: e.from_status,
       to_status: e.to_status,
@@ -882,14 +914,23 @@ export async function getTrainerLifecycleEvents(trainerId: string) {
     .eq('entity_id', trainerId)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((e: any) => ({
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    reason_category: string;
+    reason_note: string | null;
+    created_at: string;
+    admins: { name: string } | null;
+  }>;
+  return rows.map((e) => ({
     id: e.id,
-    from_status: e.from_status as string | null,
-    to_status: e.to_status as string,
-    reason_category: e.reason_category as string,
-    reason_note: e.reason_note as string | null,
-    created_at: e.created_at as string,
-    actor_name: (e.admins?.name as string | undefined) ?? 'unknown',
+    from_status: e.from_status,
+    to_status: e.to_status,
+    reason_category: e.reason_category,
+    reason_note: e.reason_note,
+    created_at: e.created_at,
+    actor_name: e.admins?.name ?? 'unknown',
   }));
 }
 
@@ -901,16 +942,27 @@ export async function getRecentLifecycleEvents(limit = 200) {
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((e: any) => ({
-    id: e.id as string,
-    entity_type: e.entity_type as 'customer' | 'trainer' | 'access_code',
-    entity_id: e.entity_id as string,
-    from_status: e.from_status as string | null,
-    to_status: e.to_status as string,
-    reason_category: e.reason_category as string,
-    reason_note: e.reason_note as string | null,
-    created_at: e.created_at as string,
-    actor_name: (e.admins?.name as string | undefined) ?? 'unknown',
-    actor_email: (e.admins?.email as string | undefined) ?? '',
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    entity_type: 'customer' | 'trainer' | 'access_code';
+    entity_id: string;
+    from_status: string | null;
+    to_status: string;
+    reason_category: string;
+    reason_note: string | null;
+    created_at: string;
+    admins: { name: string; email: string } | null;
+  }>;
+  return rows.map((e) => ({
+    id: e.id,
+    entity_type: e.entity_type,
+    entity_id: e.entity_id,
+    from_status: e.from_status,
+    to_status: e.to_status,
+    reason_category: e.reason_category,
+    reason_note: e.reason_note,
+    created_at: e.created_at,
+    actor_name: e.admins?.name ?? 'unknown',
+    actor_email: e.admins?.email ?? '',
   }));
 }
