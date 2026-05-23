@@ -180,10 +180,8 @@ create index if not exists kb_chunks_embedding_idx
   on public.kb_chunks using hnsw (embedding vector_cosine_ops);
 create index if not exists kb_chunks_source_mode_idx
   on public.kb_chunks (source_type, mode);
-create index if not exists kb_chunks_creator_idx
-  on public.kb_chunks (source_creator) where source_creator is not null;
-create index if not exists kb_chunks_sku_hints_idx
-  on public.kb_chunks using gin (sku_hints);
+-- kb_chunks_creator_idx and kb_chunks_sku_hints_idx dropped 2026-05-21
+-- (unused; see supabase/migrations/2026-05-21-drop-unused-indexes.sql).
 
 -- mode-filtered top-K nearest-neighbor search
 -- mode_filter must be 'customer' or 'partner'; any other value falls through to customer
@@ -286,7 +284,8 @@ CREATE TABLE IF NOT EXISTS coa_cache (
   updated_at       timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS coa_cache_lot_idx ON coa_cache (lot_number);
+-- coa_cache_lot_idx dropped 2026-05-21 (unused; see
+-- supabase/migrations/2026-05-21-drop-unused-indexes.sql).
 
 -- Logs every time a user asks for a COA we don't have on file.
 -- Ops reviews weekly; lets Tim know which SKUs to prioritize.
@@ -298,8 +297,8 @@ CREATE TABLE IF NOT EXISTS coa_missing_events (
   requested_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS coa_missing_events_sku_idx ON coa_missing_events (sku);
-CREATE INDEX IF NOT EXISTS coa_missing_events_requested_at_idx ON coa_missing_events (requested_at DESC);
+-- coa_missing_events_sku_idx and coa_missing_events_requested_at_idx dropped
+-- 2026-05-21 (unused; see supabase/migrations/2026-05-21-drop-unused-indexes.sql).
 
 -- === Partner Mode (Peptide Concierge v2 P4) ===
 
@@ -357,9 +356,8 @@ CREATE TABLE IF NOT EXISTS bc_customer_links (
 CREATE INDEX IF NOT EXISTS bc_customer_links_bc_customer_idx
   ON bc_customer_links (bc_customer_id);
 
-CREATE INDEX IF NOT EXISTS bc_customer_links_reengage_idx
-  ON bc_customer_links (last_reminder_at)
-  WHERE quiet_mode = false;
+-- bc_customer_links_reengage_idx dropped 2026-05-21 (unused; see
+-- supabase/migrations/2026-05-21-drop-unused-indexes.sql).
 
 -- === Lifecycle Removal (2026-04-23) ===
 -- Mirrors supabase/migrations/2026-04-23-lifecycle.sql — kept in sync so a fresh

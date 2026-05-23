@@ -58,17 +58,23 @@ ALTER TABLE public.commissions     ENABLE ROW LEVEL SECURITY;
 --   anon: nothing.
 --------------------------------------------------------------------------------
 
+-- NOTE: auth.jwt() / is_admin() / current_trainer_id() are wrapped in
+-- `(select ...)` so Postgres treats them as initplan subqueries (evaluated
+-- once per statement) instead of per-row. Supabase advisor flags the
+-- unwrapped form as `auth_rls_initplan`. See migration
+-- 2026-05-21-rls-initplan-wrap.sql.
+
 DROP POLICY IF EXISTS "admins_self_read"  ON public.admins;
 CREATE POLICY "admins_self_read" ON public.admins FOR SELECT TO authenticated
-  USING (email = lower(trim(coalesce((auth.jwt()->>'email')::text, ''))));
+  USING (email = lower(trim(coalesce(((select auth.jwt()) ->> 'email')::text, ''))));
 
 DROP POLICY IF EXISTS "admins_admin_read" ON public.admins;
 CREATE POLICY "admins_admin_read" ON public.admins FOR SELECT TO authenticated
-  USING (public.is_admin());
+  USING ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "admins_admin_write" ON public.admins;
 CREATE POLICY "admins_admin_write" ON public.admins FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 --------------------------------------------------------------------------------
 -- trainers
@@ -80,20 +86,20 @@ CREATE POLICY "admins_admin_write" ON public.admins FOR ALL TO authenticated
 
 DROP POLICY IF EXISTS "trainers_self_read"  ON public.trainers;
 CREATE POLICY "trainers_self_read" ON public.trainers FOR SELECT TO authenticated
-  USING (email = lower(trim(coalesce((auth.jwt()->>'email')::text, ''))));
+  USING (email = lower(trim(coalesce(((select auth.jwt()) ->> 'email')::text, ''))));
 
 DROP POLICY IF EXISTS "trainers_admin_read" ON public.trainers;
 CREATE POLICY "trainers_admin_read" ON public.trainers FOR SELECT TO authenticated
-  USING (public.is_admin());
+  USING ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "trainers_self_update" ON public.trainers;
 CREATE POLICY "trainers_self_update" ON public.trainers FOR UPDATE TO authenticated
-  USING (email = lower(trim(coalesce((auth.jwt()->>'email')::text, ''))))
-  WITH CHECK (email = lower(trim(coalesce((auth.jwt()->>'email')::text, ''))));
+  USING (email = lower(trim(coalesce(((select auth.jwt()) ->> 'email')::text, ''))))
+  WITH CHECK (email = lower(trim(coalesce(((select auth.jwt()) ->> 'email')::text, ''))));
 
 DROP POLICY IF EXISTS "trainers_admin_write" ON public.trainers;
 CREATE POLICY "trainers_admin_write" ON public.trainers FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 --------------------------------------------------------------------------------
 -- access_codes, customers, orders, commissions, payouts
@@ -105,44 +111,44 @@ CREATE POLICY "trainers_admin_write" ON public.trainers FOR ALL TO authenticated
 
 DROP POLICY IF EXISTS "access_codes_trainer_own" ON public.access_codes;
 CREATE POLICY "access_codes_trainer_own" ON public.access_codes FOR ALL TO authenticated
-  USING (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL)
-  WITH CHECK (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()))
+  WITH CHECK (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "access_codes_admin_all" ON public.access_codes;
 CREATE POLICY "access_codes_admin_all" ON public.access_codes FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "customers_trainer_read" ON public.customers;
 CREATE POLICY "customers_trainer_read" ON public.customers FOR SELECT TO authenticated
-  USING (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "customers_admin_all" ON public.customers;
 CREATE POLICY "customers_admin_all" ON public.customers FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "orders_trainer_read" ON public.orders;
 CREATE POLICY "orders_trainer_read" ON public.orders FOR SELECT TO authenticated
-  USING (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "orders_admin_all" ON public.orders;
 CREATE POLICY "orders_admin_all" ON public.orders FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "commissions_trainer_read" ON public.commissions;
 CREATE POLICY "commissions_trainer_read" ON public.commissions FOR SELECT TO authenticated
-  USING (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "commissions_admin_all" ON public.commissions;
 CREATE POLICY "commissions_admin_all" ON public.commissions FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 DROP POLICY IF EXISTS "payouts_trainer_read" ON public.payouts;
 CREATE POLICY "payouts_trainer_read" ON public.payouts FOR SELECT TO authenticated
-  USING (trainer_id = public.current_trainer_id() AND public.current_trainer_id() IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "payouts_admin_all" ON public.payouts;
 CREATE POLICY "payouts_admin_all" ON public.payouts FOR ALL TO authenticated
-  USING (public.is_admin()) WITH CHECK (public.is_admin());
+  USING ((select public.is_admin())) WITH CHECK ((select public.is_admin()));
 
 --------------------------------------------------------------------------------
 -- Post-conditions to verify after applying:
