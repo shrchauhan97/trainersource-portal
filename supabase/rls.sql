@@ -111,8 +111,8 @@ CREATE POLICY "trainers_admin_write" ON public.trainers FOR ALL TO authenticated
 
 DROP POLICY IF EXISTS "access_codes_trainer_own" ON public.access_codes;
 CREATE POLICY "access_codes_trainer_own" ON public.access_codes FOR ALL TO authenticated
-  USING (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL)
-  WITH CHECK (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()))
+  WITH CHECK (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "access_codes_admin_all" ON public.access_codes;
 CREATE POLICY "access_codes_admin_all" ON public.access_codes FOR ALL TO authenticated
@@ -120,7 +120,7 @@ CREATE POLICY "access_codes_admin_all" ON public.access_codes FOR ALL TO authent
 
 DROP POLICY IF EXISTS "customers_trainer_read" ON public.customers;
 CREATE POLICY "customers_trainer_read" ON public.customers FOR SELECT TO authenticated
-  USING (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "customers_admin_all" ON public.customers;
 CREATE POLICY "customers_admin_all" ON public.customers FOR ALL TO authenticated
@@ -128,7 +128,7 @@ CREATE POLICY "customers_admin_all" ON public.customers FOR ALL TO authenticated
 
 DROP POLICY IF EXISTS "orders_trainer_read" ON public.orders;
 CREATE POLICY "orders_trainer_read" ON public.orders FOR SELECT TO authenticated
-  USING (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "orders_admin_all" ON public.orders;
 CREATE POLICY "orders_admin_all" ON public.orders FOR ALL TO authenticated
@@ -136,7 +136,7 @@ CREATE POLICY "orders_admin_all" ON public.orders FOR ALL TO authenticated
 
 DROP POLICY IF EXISTS "commissions_trainer_read" ON public.commissions;
 CREATE POLICY "commissions_trainer_read" ON public.commissions FOR SELECT TO authenticated
-  USING (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "commissions_admin_all" ON public.commissions;
 CREATE POLICY "commissions_admin_all" ON public.commissions FOR ALL TO authenticated
@@ -144,7 +144,7 @@ CREATE POLICY "commissions_admin_all" ON public.commissions FOR ALL TO authentic
 
 DROP POLICY IF EXISTS "payouts_trainer_read" ON public.payouts;
 CREATE POLICY "payouts_trainer_read" ON public.payouts FOR SELECT TO authenticated
-  USING (trainer_id = (select public.current_trainer_id()) AND (select public.current_trainer_id()) IS NOT NULL);
+  USING (trainer_id IS NOT NULL AND trainer_id = (select public.current_trainer_id()));
 
 DROP POLICY IF EXISTS "payouts_admin_all" ON public.payouts;
 CREATE POLICY "payouts_admin_all" ON public.payouts FOR ALL TO authenticated

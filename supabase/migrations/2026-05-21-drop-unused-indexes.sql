@@ -18,30 +18,30 @@
 BEGIN;
 
 DROP INDEX IF EXISTS public.kb_chunks_creator_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS kb_chunks_creator_idx ON public.kb_chunks (source_creator) WHERE source_creator IS NOT NULL;
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS kb_chunks_creator_idx ON public.kb_chunks (source_creator) WHERE source_creator IS NOT NULL;
 
 DROP INDEX IF EXISTS public.kb_chunks_sku_hints_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS kb_chunks_sku_hints_idx ON public.kb_chunks USING gin (sku_hints);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS kb_chunks_sku_hints_idx ON public.kb_chunks USING gin (sku_hints);
 
 DROP INDEX IF EXISTS public.bc_customer_links_reengage_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS bc_customer_links_reengage_idx ON public.bc_customer_links (last_reminder_at) WHERE quiet_mode = false;
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS bc_customer_links_reengage_idx ON public.bc_customer_links (last_reminder_at) WHERE quiet_mode = false;
 
 DROP INDEX IF EXISTS public.coa_cache_lot_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS coa_cache_lot_idx ON public.coa_cache (lot_number);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS coa_cache_lot_idx ON public.coa_cache (lot_number);
 
 DROP INDEX IF EXISTS public.coa_missing_events_sku_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS coa_missing_events_sku_idx ON public.coa_missing_events (sku);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS coa_missing_events_sku_idx ON public.coa_missing_events (sku);
 
 DROP INDEX IF EXISTS public.coa_missing_events_requested_at_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS coa_missing_events_requested_at_idx ON public.coa_missing_events (requested_at DESC);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS coa_missing_events_requested_at_idx ON public.coa_missing_events (requested_at DESC);
 
 DROP INDEX IF EXISTS public.bot_feedback_user_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS bot_feedback_user_idx ON public.bot_feedback (telegram_user_id);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS bot_feedback_user_idx ON public.bot_feedback (telegram_user_id);
 
 DROP INDEX IF EXISTS public.bot_feedback_rating_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS bot_feedback_rating_idx ON public.bot_feedback (rating);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS bot_feedback_rating_idx ON public.bot_feedback (rating);
 
 DROP INDEX IF EXISTS public.forum_threads_source_lastpost_idx;
--- ROLLBACK: CREATE INDEX IF NOT EXISTS forum_threads_source_lastpost_idx ON public.forum_threads (source, last_post_at DESC);
+-- ROLLBACK (run outside txn — CONCURRENTLY): CREATE INDEX CONCURRENTLY IF NOT EXISTS forum_threads_source_lastpost_idx ON public.forum_threads (source, last_post_at DESC);
 
 COMMIT;
