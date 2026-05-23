@@ -1,8 +1,17 @@
+import type { Metadata } from 'next';
 import Script from 'next/script';
 import MiniAppThemeBridge from './MiniAppThemeBridge';
 
-export const metadata = {
-  title: 'Ultimate Peptides — Concierge',
+// T4.2/T4.3 — Mini routes are Telegram WebView pages, not designed for the
+// open web. Set a default + template so subpages can override with a short
+// title like "Calc" → "Calc — Ultimate Peptides". noindex/nofollow because
+// the pages are only useful inside a Telegram WebView context.
+export const metadata: Metadata = {
+  title: {
+    absolute: 'Ultimate Peptides — Concierge',
+    template: null,
+  },
+  robots: { index: false, follow: false },
 };
 
 // The root layout renders a global compliance footer. We hide it for mini routes

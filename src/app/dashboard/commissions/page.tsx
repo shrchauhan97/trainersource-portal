@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { getTrainerCommissions } from '../actions';
 import { DashboardTable } from '@/components/dashboard/DashboardTable';
+
+export const metadata: Metadata = { title: 'Commissions' };
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-US', {

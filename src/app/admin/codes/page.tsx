@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { AdminCodeGenerator } from '@/components/admin/AdminCodeGenerator';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import { StatusBadge } from '@/components/admin/StatusBadge';
+
+export const metadata: Metadata = { title: 'Codes' };
 import {
   codeStatusOptions,
   formatDate,

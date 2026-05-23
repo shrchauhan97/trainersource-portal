@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { loadTrainerOnboardingState } from '../_lib/state';
 import { ApplicationForm } from './ApplicationForm';
+
+export const metadata: Metadata = { title: 'Application' };
 
 // Step 1 — Application. Renders the 3 sub-tabs (CONTACT / QUALIFICATIONS /
 // SALES GOALS) inside a single card. Server component only loads state and

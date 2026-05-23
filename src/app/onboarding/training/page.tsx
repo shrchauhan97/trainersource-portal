@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { loadTrainerOnboardingState } from '../_lib/state';
 import { requireStepAccess } from '../_lib/stepGate';
 import { TrainingScreen } from './TrainingScreen';
+
+export const metadata: Metadata = { title: 'Training' };
 
 // Step 2 — Training. Loads server state then hands off to the client wrapper
 // so the SubTabs (Videos / Quiz) can manage local UI state. requireStepAccess

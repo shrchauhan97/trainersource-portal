@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { requireActiveTrainer } from '../actions';
 import { SettingsForm } from './SettingsForm';
+
+export const metadata: Metadata = { title: 'Settings' };
 
 export default async function DashboardSettingsPage() {
   const { trainer } = await requireActiveTrainer();

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { changeTrainerStatus, createTrainer } from '@/app/admin/actions';
@@ -11,6 +12,8 @@ import {
   getTrainerDirectory,
   trainerStatusOptions,
 } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Trainers' };
 
 type TrainersPageProps = {
   searchParams: Promise<{

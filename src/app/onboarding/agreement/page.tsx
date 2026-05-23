@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { loadTrainerOnboardingState } from '../_lib/state';
 import { requireStepAccess } from '../_lib/stepGate';
 import { AgreementScreen } from './AgreementScreen';
+
+export const metadata: Metadata = { title: 'Agreement' };
 
 // Step 3 server entry. Loads onboarding state then hands off to the client
 // shell. Env-driven asset URLs (welcome video + agreement PDF) are read here

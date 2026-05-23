@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { loadTrainerOnboardingState } from './_lib/state';
 import { OnboardingHeader } from './_components/OnboardingHeader';
@@ -5,6 +6,18 @@ import { Stepper } from './_components/Stepper';
 import { OnboardingStateProvider } from './_components/OnboardingStateProvider';
 
 export const dynamic = 'force-dynamic';
+
+// T4.2/T4.3 — Onboarding is an authenticated multi-step flow. title.template
+// lets each step page set a short title that resolves as e.g.
+// "Application — TrainerSource Onboarding". noindex/nofollow because the URLs
+// only resolve for the logged-in trainer they belong to.
+export const metadata: Metadata = {
+  title: {
+    absolute: 'TrainerSource Onboarding',
+    template: '%s — TrainerSource Onboarding',
+  },
+  robots: { index: false, follow: false },
+};
 
 // Layout is a server component. We used to wrap children in an
 // ActiveStepProvider that took a render-prop function child, but Next.js 16

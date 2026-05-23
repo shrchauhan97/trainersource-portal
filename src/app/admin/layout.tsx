@@ -3,9 +3,18 @@ import type { Metadata } from 'next';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { getAdminPageContext } from '@/components/admin/data';
 
+// T4.2/T4.3 — Admin shell sets a title.template so each admin subpage can set
+// a short title like "Orders" and have it render as "Orders — TrainerSource
+// Admin". noindex/nofollow on the whole admin tree — these pages require an
+// admin session and shouldn't appear in search results even if someone leaks
+// a URL.
 export const metadata: Metadata = {
-  title: 'TrainerSource Admin',
+  title: {
+    absolute: 'TrainerSource Admin',
+    template: '%s — TrainerSource Admin',
+  },
   description: 'Admin control center for trainers, orders, commissions, payouts, and codes.',
+  robots: { index: false, follow: false },
 };
 
 export default async function AdminLayout({

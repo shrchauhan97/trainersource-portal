@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { StatusBadge } from '@/components/admin/StatusBadge';
 import { formatDate, getCustomersList } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Customers' };
 
 export default async function AdminCustomersPage() {
   const customers = await getCustomersList();

@@ -1,6 +1,31 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import PublicTopNav from "@/components/landing/PublicTopNav";
 import PublicFooter from "@/components/landing/PublicFooter";
+
+// T4.2/T4.3 — Affiliate program landing page. Public and shareable, so we
+// want full OG/Twitter coverage. Reuse the dynamic /api/og endpoint (no code
+// → generic TrainerSource card).
+export const metadata: Metadata = {
+  title: "Affiliate program",
+  description:
+    "Become a TrainerSource affiliate — lifetime commissions, monthly payouts, real-time tracking.",
+  openGraph: {
+    title: "Affiliate program — TrainerSource",
+    description:
+      "Become a TrainerSource affiliate — lifetime commissions, monthly payouts, real-time tracking.",
+    url: "/affiliate",
+    type: "website",
+    images: [{ url: "/api/og", width: 1200, height: 630, alt: "TrainerSource" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Affiliate program — TrainerSource",
+    description:
+      "Become a TrainerSource affiliate — lifetime commissions, monthly payouts, real-time tracking.",
+    images: ["/api/og"],
+  },
+};
 
 // Local /assets/ images — Stitch's lh3.googleusercontent.com/aida URLs
 // went 403 once the Stitch design session expired.

@@ -14,9 +14,46 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
 });
 
+// T4.2 — Per-route titles. Every child page.tsx / layout.tsx sets a short
+// `title` string and Next's title.template wraps it as "<page> — TrainerSource".
+// Pages that want a custom standalone title (e.g. /r/[code]) use title.absolute.
+// T4.3 — Default OG/Twitter metadata. Per-route pages override description and
+// (where applicable) point at the dynamic /api/og endpoint. metadataBase makes
+// relative OG image URLs resolve correctly when the file is fetched server-side
+// by a social platform crawler.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://trainer-source.com";
+
 export const metadata: Metadata = {
-  title: "TS TRAINERSOURCE",
-  description: "Delivering the products your clients need",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "TrainerSource",
+    template: "%s — TrainerSource",
+  },
+  description:
+    "TrainerSource — helping professional trainers discover professional products.",
+  openGraph: {
+    title: "TrainerSource",
+    description:
+      "TrainerSource — helping professional trainers discover professional products.",
+    url: SITE_URL,
+    siteName: "TrainerSource",
+    type: "website",
+    images: [
+      {
+        url: "/api/og",
+        width: 1200,
+        height: 630,
+        alt: "TrainerSource",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TrainerSource",
+    description:
+      "TrainerSource — helping professional trainers discover professional products.",
+    images: ["/api/og"],
+  },
 };
 
 export default function RootLayout({

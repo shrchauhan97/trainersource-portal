@@ -1,3 +1,7 @@
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = { title: 'Pending review' };
+
 // Trainers whose status isn't 'onboarding' yet (still 'applied') land here
 // instead of the stepper. Replaces the inline branch that used to live in
 // the old onboarding/page.tsx.

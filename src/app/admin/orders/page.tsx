@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import {
@@ -5,6 +6,8 @@ import {
   getSearchValue,
   orderStatusOptions,
 } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Orders' };
 
 import { OrdersTableLive } from './orders-table-live';
 

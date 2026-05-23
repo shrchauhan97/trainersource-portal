@@ -1,8 +1,11 @@
+import type { Metadata } from 'next';
 import { createPayoutBatch, updatePayoutStatus } from '@/app/admin/actions';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import { StatusBadge } from '@/components/admin/StatusBadge';
 import { formatCurrency, getPayoutDirectory } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Payouts' };
 
 export default async function AdminPayoutsPage() {
   const { rows, payoutPreview } = await getPayoutDirectory();

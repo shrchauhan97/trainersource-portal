@@ -1,7 +1,15 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTrainerClients, getTrainerCodes, getTrainerCommissions } from './actions';
 import { DashboardTable } from '@/components/dashboard/DashboardTable';
 import { ConnectTelegramBanner } from '@/components/ConnectTelegramBanner';
+
+// title.absolute — dashboard index gets the full standalone title so the
+// browser tab reads "Dashboard — TrainerSource" rather than the layout's
+// "TrainerSource Dashboard" default.
+export const metadata: Metadata = {
+  title: { absolute: 'Dashboard — TrainerSource' },
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-US', {

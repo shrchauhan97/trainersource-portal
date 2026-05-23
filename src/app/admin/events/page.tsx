@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { formatDate, getRecentLifecycleEvents } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Events' };
 
 function entityHref(entityType: string, entityId: string): string | null {
   if (entityType === 'customer') return `/admin/customers/${entityId}`;

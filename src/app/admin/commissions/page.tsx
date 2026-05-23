@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { approveSelectedCommissions } from '@/app/admin/actions';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { SubmitButton } from '@/components/admin/SubmitButton';
+
+export const metadata: Metadata = { title: 'Commissions' };
 import {
   commissionStatusOptions,
   getCommissionDirectory,

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   suspendCustomer, removeCustomer, restoreCustomer,
@@ -6,6 +7,8 @@ import { AdminSection } from '@/components/admin/AdminSection';
 import { StatusBadge } from '@/components/admin/StatusBadge';
 import { LifecycleActionForm } from '@/components/admin/LifecycleActionForm';
 import { formatDate, getCustomerDetail } from '@/components/admin/data';
+
+export const metadata: Metadata = { title: 'Customer detail' };
 
 type Props = { params: Promise<{ customerId: string }> };
 

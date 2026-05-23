@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { getTrainerCodes } from '../actions';
 import { DashboardTable } from '@/components/dashboard/DashboardTable';
 import { GenerateCodeForm } from '@/components/dashboard/GenerateCodeForm';
+
+export const metadata: Metadata = { title: 'Codes' };
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-US', {

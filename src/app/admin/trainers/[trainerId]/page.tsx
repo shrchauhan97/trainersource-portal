@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
+
+export const metadata: Metadata = { title: 'Trainer detail' };
 import { AdminSection } from '@/components/admin/AdminSection';
 import { LifecycleActionForm } from '@/components/admin/LifecycleActionForm';
 import { StatCard } from '@/components/admin/StatCard';

@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { loadTrainerOnboardingState } from '../_lib/state';
 import { requireStepAccess } from '../_lib/stepGate';
 import { GoLiveScreen } from './GoLiveScreen';
+
+export const metadata: Metadata = { title: 'Go live' };
 
 // Step 4 — gates trainers who haven't reached this step server-side so the
 // browser address bar can't be used to skip Application/Training/Agreement.
