@@ -169,10 +169,18 @@ create table if not exists public.kb_chunks (
   embedding        vector(768) not null,
   ingested_at      timestamptz not null default now(),
   content_hash     text not null unique,
+  -- Source-of-record publication date for the underlying document (not
+  -- the ingest run). Surfaced inline in the system prompt by the bot's
+  -- formatChunksForPrompt() so the LLM can frame evidence by recency.
+  -- Nullable because some source types (ts_manual, l30d) have no
+  -- per-document date; threaded through chunkers as of 2026-05-30.
+  published_at     timestamptz,
   constraint kb_chunks_mode_check check (mode in ('all', 'partner_only', 'customer_only')),
   constraint kb_chunks_source_type_check check (
     source_type in ('matt_kb', 'yt_huberman', 'yt_smashrx', 'yt_creator',
-                    'yt_howto', 'pubmed', 'l30d', 'ts_manual')
+                    'yt_howto', 'pubmed', 'l30d', 'ts_manual',
+                    'forum_excelmale', 'forum_thinksteroids', 'forum_longecity',
+                    'forum_reddit')
   )
 );
 
