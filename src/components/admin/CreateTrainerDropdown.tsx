@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { createTrainer } from '@/app/admin/actions';
 import { SubmitButton } from '@/components/admin/SubmitButton';
-import { trainerStatusOptions } from '@/components/admin/data.constants';
+import { trainerStatusOptions } from '@/components/admin/shared';
 
 export function CreateTrainerDropdown() {
   const [isOpen, setIsOpen] = useState(false);

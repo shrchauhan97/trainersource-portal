@@ -5,10 +5,10 @@ import { useMemo, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 
-import { checkEmailAllowed, signInRedirect, createPasswordFirstTimeAction, type CheckEmailResult } from './actions';
+import { checkEmailAllowed, signInRedirect, type CheckEmailResult } from './actions';
 
 const callbackErrorMessages: Record<string, string> = {
-  auth_callback_failed: 'We could not complete sign in. Please request a new magic link.',
+  auth_callback_failed: 'The confirmation link didn\'t work. This can happen if you clicked it in a different browser profile. Try requesting a new magic link from the same browser where you signed up.',
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
 };
@@ -24,7 +24,7 @@ const checkErrorMessages: Record<
   server_error: 'Something went wrong. Please try again in a moment.',
 };
 
-type Step = 'email' | 'password' | 'create-password';
+type Step = 'email' | 'password';
 
 type LoginFormProps = {
   errorKey?: string;
@@ -35,7 +35,6 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [magicSent, setMagicSent] = useState(false);
@@ -71,7 +70,11 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
       }
       setEmail(normalizedEmail);
       setHasPassword(result.hasPassword);
-      setStep(result.hasPassword ? 'password' : 'create-password');
+      if (result.hasPassword) {
+        setStep('password');
+      } else {
+        await sendMagicLink(normalizedEmail);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -124,47 +127,6 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
     // On success, signInRedirect calls Next's redirect() which throws —
     // navigation happens server-side, this code never reaches the next line.
   }
-
-  async function handleCreatePasswordSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
-  formEvent.preventDefault();
-  resetMessages();
-
-  if (!password) {
-    setError('Enter a password.');
-    return;
-  }
-
-  if (password.length < 12) {
-    setError('Password must be at least 12 characters.');
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    setError('Passwords do not match.');
-    return;
-  }
-
-  setIsSubmitting(true);
-  const formData = new FormData();
-  formData.set('email', email);
-  formData.set('password', password);
-  
-  try {
-    const result = await createPasswordFirstTimeAction(email, password);
-    setIsSubmitting(false);
-    
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    
-    // Success - redirect
-    window.location.href = result.next;
-  } catch (err) {
-    setIsSubmitting(false);
-    setError('Something went wrong. Please try again.');
-  }
-}
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface px-6 py-16 text-clinical-slate">
@@ -222,7 +184,7 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
               {isSubmitting ? 'Checking…' : 'Continue'}
             </button>
           </form>
-        ) : step === 'password' ? (
+        ) : (
           <form onSubmit={handlePasswordSubmit} className="mt-8 space-y-5">
             {hasPassword ? (
               <>
@@ -308,75 +270,6 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
             >
               ← Use a different email
             </button>
-          </form>
-        ) : (
-          <form onSubmit={handleCreatePasswordSubmit} className="mt-8 space-y-5">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Account found! Set your password to get started.
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-semibold text-clinical-slate">
-                Password (minimum 12 characters)
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError(null);
-                }}
-                placeholder="Create a strong password"
-                className="w-full rounded-2xl border border-clinical-slate/15 bg-surface px-4 py-3 text-base text-clinical-slate outline-none transition placeholder:text-clinical-slate/40 focus:border-hyrox-orange focus:ring-4 focus:ring-hyrox-orange/15"
-                disabled={isSubmitting}
-                required
-                minLength={12}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-semibold text-clinical-slate">
-                Confirm password
-              </label>
-              <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => {
-                  setConfirmPassword(e.target.value);
-                  setError(null);
-                }}
-                placeholder="Confirm your password"
-                className="w-full rounded-2xl border border-clinical-slate/15 bg-surface px-4 py-3 text-base text-clinical-slate outline-none transition placeholder:text-clinical-slate/40 focus:border-hyrox-orange focus:ring-4 focus:ring-hyrox-orange/15"
-                disabled={isSubmitting}
-                required
-                minLength={12}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-hyrox-orange px-4 py-3 font-semibold text-white transition hover:bg-[#e64a19] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isSubmitting ? 'Creating account…' : 'Create password & Sign in'}
-            </button>
-
-            <div className="flex items-center justify-between text-sm">
-              <button
-                type="button"
-                onClick={() => sendMagicLink(email)}
-                disabled={isSubmitting || magicSent}
-                className="font-medium text-clinical-slate/70 hover:underline disabled:opacity-50"
-              >
-                Send me a magic link instead
-              </button>
-            </div>
           </form>
         )}
 
