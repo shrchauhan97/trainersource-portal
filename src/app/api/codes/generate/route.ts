@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { CODE_EXPIRY_DAYS, CODE_LENGTH } from '@/lib/constants';
 import type { Trainer } from '@/lib/types';
@@ -35,14 +36,15 @@ async function requireTrainer() {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (authError || !sessionEmail) {
     return { supabase, trainer: null };
   }
 
   const { data: trainer, error: trainerError } = await supabase
     .from('trainers')
     .select('*')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle<Trainer>();
 
   if (trainerError) {

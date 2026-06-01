@@ -1,5 +1,6 @@
 'use server';
 
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { advanceOnboardingStep } from '../_lib/state';
@@ -16,14 +17,15 @@ async function resolveOnboardingTrainer() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) {
     return { error: 'You must be signed in.' as const };
   }
 
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id, status')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle();
 
   if (!trainer) {

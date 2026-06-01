@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 
 export type TrainerProfileFormValues = {
@@ -32,7 +33,8 @@ export async function updateTrainerProfile(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) {
     return {
       success: false,
       message: 'You must be signed in to update your profile.',
@@ -42,7 +44,7 @@ export async function updateTrainerProfile(
   const { data: trainer, error: trainerLookupError } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .single();
 
   if (trainerLookupError || !trainer) {
