@@ -89,6 +89,21 @@ function friendlyDbError(error: { code?: string; message?: string; details?: str
   return 'Something went wrong submitting your application. Please try again in a moment, or email hello@trainersource.app if it keeps happening.';
 }
 
+// Normalize a form-field text input. Strips leading/trailing whitespace, which
+// applicants supply more often than you'd think (autofill, mobile keyboards
+// that auto-insert trailing spaces, hand-typed phone numbers with spaces
+// around the digits). Empty / non-string → empty string.
+function fieldText(value: FormDataEntryValue | null): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+// Same shape as `fieldText` but returns null when the trimmed value is empty,
+// matching the column nullability for `phone`, `niche`, `social_media`.
+function fieldTextOrNull(value: FormDataEntryValue | null): string | null {
+  const trimmed = fieldText(value);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 // Service role: this action runs BEFORE the applicant has a login (they
 // don't have an auth session yet), so the user-scoped SSR client would
 // hit RLS as `anon` and be denied. Fine to use service role here because
@@ -98,14 +113,23 @@ function friendlyDbError(error: { code?: string; message?: string; details?: str
 export async function submitApplication(formData: FormData) {
   const supabase = createServiceClient();
 
-  const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
-  const phone = formData.get('phone') as string;
-  const country = formData.get('country') as string;
-  const city = formData.get('city') as string;
-  const niche = formData.get('niche') as string;
-  const social_media = formData.get('socialMedia') as string;
-  
+  // Normalization contract: every persisted text column is trimmed; email is
+  // additionally lowercased. The session-side trainer/admin lookups all run
+  // against a lowercased session email (PR #47 — normalizeSessionEmail), so
+  // unless THIS write site also lowercases on insert the next applicant who
+  // types `John@Example.COM` ends up with a stored row that misses every
+  // .eq('email', ...) on sign-in → silent /apply bounce, missing dashboard
+  // data, missing telegram-link banner, etc. The previous version of this
+  // action used `formData.get('email') as string` raw, which was the
+  // landmine A4 P1 flagged in bugs/A4-ts-app-code-audit.md.
+  const name = fieldText(formData.get('name'));
+  const email = fieldText(formData.get('email')).toLowerCase();
+  const phone = fieldTextOrNull(formData.get('phone'));
+  const country = fieldText(formData.get('country'));
+  const city = fieldText(formData.get('city'));
+  const niche = fieldTextOrNull(formData.get('niche'));
+  const social_media = fieldTextOrNull(formData.get('socialMedia'));
+
   if (!name || !email || !country || !city) {
     const missing = [
       !name && 'Full name',
@@ -164,11 +188,11 @@ export async function submitApplication(formData: FormData) {
     .insert({
       name,
       email,
-      phone: phone || null,
+      phone,
       country,
       city,
-      niche: niche || null,
-      social_media: social_media || null,
+      niche,
+      social_media,
       slug,
       tier: 'trainer',
       status: 'applied',

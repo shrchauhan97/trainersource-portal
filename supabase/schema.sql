@@ -18,9 +18,13 @@ DO $$ BEGIN CREATE TYPE commission_status AS ENUM ('pending', 'approved', 'paid'
 DO $$ BEGIN CREATE TYPE commission_type AS ENUM ('first_sale', 'reorder'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Admins (Tim & Matt are superadmins in prod; demo seeds one admin)
+-- `*_email_lowercase_check`: persisted emails MUST be lowercase + trimmed.
+-- Mirrors the session-side `normalizeSessionEmail` contract (PR #47) on the
+-- write side so a mixed-case insert can't silently break later `.eq('email', …)`
+-- lookups. Backed by migration 2026-06-02-trainers-admins-email-lowercase-check.
 CREATE TABLE IF NOT EXISTS admins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL CHECK (email = lower(trim(email))),
     name TEXT NOT NULL,
     role admin_role NOT NULL DEFAULT 'admin',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -30,7 +34,7 @@ CREATE TABLE IF NOT EXISTS admins (
 CREATE TABLE IF NOT EXISTS trainers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL CHECK (email = lower(trim(email))),
     phone TEXT,
     country TEXT NOT NULL,
     city TEXT NOT NULL,
