@@ -114,7 +114,12 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
 
     if (!trainer) return { allowed: false, reason: 'not_authorized' };
     if (trainer.status === 'suspended') return { allowed: false, reason: 'suspended' };
-    if (trainer.status !== 'active') return { allowed: false, reason: 'not_authorized' };
+    // Onboarding trainers must be able to sign in to reach the onboarding
+    // stepper — see SHA-5. Mirrors getUserRole in src/lib/auth.ts. 'applied'
+    // (admin hasn't approved them yet) stays gated as not_authorized.
+    if (trainer.status !== 'active' && trainer.status !== 'onboarding') {
+      return { allowed: false, reason: 'not_authorized' };
+    }
   }
 
   const { data: hasPwd, error: rpcError } = await supabase.rpc('user_has_password_by_email', {

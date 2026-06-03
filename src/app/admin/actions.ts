@@ -2,9 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 
 import { getCurrentAdminEmail } from '@/lib/auth';
 import { deleteBcCustomer } from '@/lib/bc-rest-client';
+import { sendEmail, trainerApprovedInviteEmail } from '@/lib/email';
 import {
   isRemovableReason,
   requireSuperadmin,
@@ -257,6 +259,25 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
     throw new Error('Trainer id and status are required.');
   }
 
+  // Read the prior status so we can decide whether this transition is
+  // "applicant approval" (applied → onboarding or applied → active, which
+  // is the admin clicking Approve / Activate on a still-applied row). Only
+  // those transitions should fire the trainer-facing welcome email — moves
+  // between onboarding/active/suspended must not re-notify them.
+  const { data: existingTrainer, error: existingTrainerError } = await supabase
+    .from('trainers')
+    .select('id, name, email, status')
+    .eq('id', trainerId)
+    .maybeSingle();
+
+  if (existingTrainerError) {
+    throw existingTrainerError;
+  }
+
+  if (!existingTrainer) {
+    throw new Error('Trainer not found.');
+  }
+
   const updates: {
     status: TrainerStatus;
     onboarding_completed_at?: string | null;
@@ -276,7 +297,49 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
     await suspendTrainerCodes(supabase, trainerId);
   }
 
+  // Fire-and-forget welcome email when the admin approves a still-applied
+  // trainer (SHA-5). Without this, the trainer's row flips to 'onboarding'
+  // but they are never told and the entire onboarding flow is unreachable.
+  // Scheduled via next/server `after()` so Vercel keeps the lambda alive
+  // until the send resolves — a bare `void notifyTrainerApproved(...)` can
+  // get cut off when the runtime freezes the instance after the action
+  // returns. Email failures intentionally do NOT bubble: the status change
+  // is the source of truth; the notification is a courtesy.
+  if (
+    existingTrainer.status === 'applied' &&
+    (status === 'onboarding' || status === 'active') &&
+    existingTrainer.email
+  ) {
+    const trainerName = existingTrainer.name ?? '';
+    const trainerEmail = existingTrainer.email;
+    after(() => notifyTrainerApproved({ trainerName, trainerEmail }));
+  }
+
   revalidateAdminPages(`/admin/trainers/${trainerId}`);
+}
+
+async function notifyTrainerApproved(input: {
+  trainerName: string;
+  trainerEmail: string;
+}): Promise<void> {
+  try {
+    const { subject, html } = trainerApprovedInviteEmail({
+      trainerName: input.trainerName,
+    });
+    const result = await sendEmail({
+      to: input.trainerEmail,
+      subject,
+      html,
+    });
+    if (!result.ok) {
+      console.error('[admin] trainer-approved email send failed', {
+        to: input.trainerEmail,
+        error: result.error,
+      });
+    }
+  } catch (err) {
+    console.error('[admin] notifyTrainerApproved threw', err);
+  }
 }
 
 export async function approveSelectedCommissions(formData: FormData): Promise<void> {

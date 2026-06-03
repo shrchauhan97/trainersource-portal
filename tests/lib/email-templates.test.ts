@@ -12,6 +12,7 @@ import {
   htmlEscape,
   newClientJoinedEmail,
   firstOrderEmail,
+  trainerApprovedInviteEmail,
 } from '@/lib/email';
 
 describe('htmlEscape', () => {
@@ -224,5 +225,47 @@ describe('firstOrderEmail', () => {
     });
     expect(html).toContain('$1000.00');
     expect(html).toContain('$100.00');
+  });
+});
+
+describe('trainerApprovedInviteEmail (SHA-5)', () => {
+  it('renders the trainer first name + a sign-in CTA pointing at /login', () => {
+    const { subject, html } = trainerApprovedInviteEmail({
+      trainerName: 'Tim Smith',
+    });
+    expect(subject).toBe("You're approved — welcome to TrainerSource");
+    expect(html).toContain('Hey Tim');
+    expect(html).toContain('Sign in to onboard');
+    // The CTA must point at /login — the existing magic-link flow takes
+    // them through /auth/callback into /dashboard (or set-password). It
+    // must NOT deep-link to /onboarding directly; that requires a session.
+    expect(html).toMatch(/href="https?:\/\/[^"]+\/login"/);
+    expect(html).not.toContain('href="/onboarding"');
+  });
+
+  it('escapes a <script> payload in trainerName (via first-name split)', () => {
+    const { html } = trainerApprovedInviteEmail({
+      trainerName: '<script>alert(1)</script> Smith',
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  it('escapes an attribute-break payload in trainerName', () => {
+    // The template renders only the first space-separated chunk via
+    // `.split(' ')[0]`, so a payload without spaces is fully captured.
+    const { html } = trainerApprovedInviteEmail({
+      trainerName: 'Alice"><img>',
+    });
+    expect(html).not.toContain('<img>');
+    expect(html).toContain('Alice&quot;&gt;&lt;img&gt;');
+  });
+
+  it('handles empty trainerName without crashing', () => {
+    // notifyTrainerApproved coerces a null DB column to '' before calling
+    // this template — guard the contract so a future caller can't NPE the
+    // .split(' ') call.
+    const { html } = trainerApprovedInviteEmail({ trainerName: '' });
+    expect(html).toContain('Hey ');
   });
 });

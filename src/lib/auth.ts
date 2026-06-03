@@ -60,7 +60,20 @@ export async function getUserRole(email?: string | null): Promise<AppUserRole> {
       return 'suspended';
     }
 
-    if (trainer.status === 'active') {
+    // Both 'active' and 'onboarding' map to 'trainer'. The dashboard shell is
+    // already designed to render for onboarding trainers (see the comment on
+    // `getTrainerBySession` in src/app/dashboard/actions.ts — non-active sees
+    // a greyed shell + an onboarding CTA), and mutation actions re-check
+    // status === 'active' before running. Before this change, getUserRole
+    // returned 'unauthorized' for an approved-but-still-onboarding trainer,
+    // so they could never authenticate (auth/callback signed them out,
+    // checkEmailAllowed rejected them) and the entire onboarding flow was
+    // unreachable — see SHA-5.
+    //
+    // 'applied' (never approved) intentionally stays 'unauthorized' — they
+    // are not yet supposed to have access; an admin's Approve click moves
+    // them to 'onboarding' which is when this branch starts allowing them.
+    if (trainer.status === 'active' || trainer.status === 'onboarding') {
       return 'trainer';
     }
   }

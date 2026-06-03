@@ -300,6 +300,34 @@ export function firstOrderEmail(input: {
   };
 }
 
+export function trainerApprovedInviteEmail(input: {
+  trainerName: string;
+}) {
+  // Subject is a header — see comment in newClientJoinedEmail. The trainer's
+  // own name is the only interpolated value here; mail clients render it as
+  // plain text.
+  const subject = "You're approved — welcome to TrainerSource";
+  const trainerFirstName = htmlEscape(input.trainerName.split(' ')[0] ?? '');
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Hey ${trainerFirstName} — your TrainerSource application is approved.
+    </p>
+    <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#41627b;">
+      The next step is a short onboarding flow: tell us about your training, add a payout method, and sign the partner agreement. Once that's done you'll be live and earning commission on every client you bring in.
+    </p>
+    <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#41627b;">
+      Sign in with this email address. We'll send a one-time link, or you can set a password after the first sign-in.
+    </p>
+  `;
+  return {
+    subject,
+    html: shell("You're in. Let's get you set up.", body, {
+      label: 'Sign in to onboard',
+      href: `${getSiteUrl()}/login`,
+    }),
+  };
+}
+
 export function newTrainerApplicationEmail(input: {
   trainerName: string;
   trainerEmail: string;

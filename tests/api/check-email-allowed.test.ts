@@ -89,7 +89,7 @@ describe('checkEmailAllowed', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  it('onboarding/applied trainer (not yet active) returns not_authorized', async () => {
+  it('applied trainer (admin has not approved yet) returns not_authorized', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'admins') return adminsRow(null);
       if (table === 'trainers') return trainersRow({ status: 'applied' });
@@ -98,6 +98,21 @@ describe('checkEmailAllowed', () => {
 
     const result = await checkEmailAllowed('applicant@example.com');
     expect(result).toEqual({ allowed: false, reason: 'not_authorized' });
+  });
+
+  it('onboarding trainer is allowed (SHA-5 — they must be able to sign in to onboard)', async () => {
+    // Before SHA-5, this case fell through the `status !== 'active'` branch
+    // and returned not_authorized, so an approved trainer could never reach
+    // the onboarding stepper.
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'admins') return adminsRow(null);
+      if (table === 'trainers') return trainersRow({ status: 'onboarding' });
+      throw new Error('unexpected table: ' + table);
+    });
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const result = await checkEmailAllowed('onboarding@example.com');
+    expect(result).toEqual({ allowed: true, hasPassword: false });
   });
 
   it('unknown email returns not_authorized', async () => {
