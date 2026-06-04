@@ -3,6 +3,7 @@ import { cn } from '@/components/admin/shared';
 const palette: Record<string, string> = {
   applied: 'border-amber-200 bg-amber-50 text-amber-700',
   onboarding: 'border-sky-200 bg-sky-50 text-sky-700',
+  onboarding_completed: 'border-cyan-200 bg-cyan-50 text-cyan-700',
   active: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   suspended: 'border-rose-200 bg-rose-50 text-rose-700',
   pending: 'border-amber-200 bg-amber-50 text-amber-700',

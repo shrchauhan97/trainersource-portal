@@ -111,14 +111,21 @@ export default async function AdminTrainersPage({ searchParams }: TrainersPagePr
                             <form action={changeTrainerStatus}>
                               <input type="hidden" name="trainerId" value={trainer.id} />
                               <input type="hidden" name="status" value="onboarding" />
-                              <SubmitButton label="Approve" pendingLabel="Approving" variant="primary" />
+                              <SubmitButton label="Invite Into Onboarding" pendingLabel="Inviting Into Onboarding" variant="primary" />
                             </form>
                           ) : null}
-                          {trainer.status !== 'active' ? (
+                          {trainer.status === 'onboarding_completed' ? (
                             <form action={changeTrainerStatus}>
                               <input type="hidden" name="trainerId" value={trainer.id} />
                               <input type="hidden" name="status" value="active" />
-                              <SubmitButton label="Activate" pendingLabel="Activating" variant="secondary" />
+                              <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="secondary" />
+                            </form>
+                          ) : null}
+                          {trainer.status === 'suspended' ? (
+                            <form action={changeTrainerStatus}>
+                              <input type="hidden" name="trainerId" value={trainer.id} />
+                              <input type="hidden" name="status" value="active" />
+                              <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="primary" />
                             </form>
                           ) : null}
                           {trainer.status !== 'suspended' ? (

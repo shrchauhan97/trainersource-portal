@@ -6,6 +6,10 @@ import { redirect } from 'next/navigation';
 import { getCurrentAdminEmail, normalizeSessionEmail } from '@/lib/auth';
 import { deleteBcCustomer } from '@/lib/bc-rest-client';
 import {
+  sendEmail,
+  trainerOnboardingInviteEmail,
+} from '@/lib/email';
+import {
   isRemovableReason,
   requireSuperadmin,
   writeLifecycleEvent,
@@ -134,13 +138,19 @@ export async function createTrainer(formData: FormData): Promise<void> {
 
   const requestedStatus = asString(formData.get('status')) as TrainerStatus;
   const status: TrainerStatus =
-    requestedStatus === 'onboarding' || requestedStatus === 'active' || requestedStatus === 'suspended'
+    requestedStatus === 'onboarding' ||
+    requestedStatus === 'onboarding_completed' ||
+    requestedStatus === 'active' ||
+    requestedStatus === 'suspended'
       ? requestedStatus
       : 'applied';
 
   const slugSeed = asString(formData.get('slug')) || name;
   const slug = await ensureUniqueSlug(supabase, slugSeed);
-  const onboardingCompletedAt = status === 'active' ? new Date().toISOString() : null;
+  const onboardingCompletedAt =
+    status === 'active' || status === 'onboarding_completed'
+      ? new Date().toISOString()
+      : null;
 
   const { error } = await supabase.from('trainers').insert({
     name,
@@ -203,6 +213,7 @@ export async function updateTrainer(formData: FormData): Promise<void> {
   const status: TrainerStatus =
     requestedStatus === 'applied' ||
     requestedStatus === 'onboarding' ||
+    requestedStatus === 'onboarding_completed' ||
     requestedStatus === 'active' ||
     requestedStatus === 'suspended'
       ? requestedStatus
@@ -211,7 +222,7 @@ export async function updateTrainer(formData: FormData): Promise<void> {
   const slugSeed = asString(formData.get('slug')) || name;
   const slug = await ensureUniqueSlug(supabase, slugSeed, trainerId);
   const onboardingCompletedAt =
-    status === 'active'
+    status === 'active' || status === 'onboarding_completed'
       ? existingTrainer.onboarding_completed_at ?? new Date().toISOString()
       : existingTrainer.onboarding_completed_at;
 
@@ -262,14 +273,37 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
     onboarding_completed_at?: string | null;
   } = { status };
 
-  if (status === 'active') {
-    updates.onboarding_completed_at = new Date().toISOString();
+  const { data: trainer, error: trainerError } = await supabase
+    .from('trainers')
+    .select('id, name, email, city, status')
+    .eq('id', trainerId)
+    .maybeSingle();
+
+  if (trainerError) {
+    throw trainerError;
+  }
+
+  if (!trainer) {
+    throw new Error('Trainer not found.');
   }
 
   const { error } = await supabase.from('trainers').update(updates).eq('id', trainerId);
 
   if (error) {
     throw error;
+  }
+
+  if (status === 'onboarding' && trainer.status !== 'onboarding') {
+    const invite = trainerOnboardingInviteEmail({
+      trainerName: trainer.name,
+      city: trainer.city,
+    });
+
+    await sendEmail({
+      to: trainer.email,
+      subject: invite.subject,
+      html: invite.html,
+    });
   }
 
   if (status === 'suspended') {

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
+import { changeTrainerStatus, suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
 
 export const metadata: Metadata = { title: 'Trainer detail' };
 import { AdminSection } from '@/components/admin/AdminSection';
@@ -137,13 +137,54 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
             </div>
           </form>
           <div className="mt-4 flex flex-wrap gap-3">
+            {data.trainer.status === 'applied' ? (
+              <>
+                <form action={changeTrainerStatus}>
+                  <input type="hidden" name="trainerId" value={data.trainer.id} />
+                  <input type="hidden" name="status" value="onboarding" />
+                  <SubmitButton label="Invite Into Onboarding" pendingLabel="Inviting Into Onboarding" variant="primary" />
+                </form>
+                <LifecycleActionForm
+                  action={suspendTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="suspend"
+                  label="Suspend"
+                />
+              </>
+            ) : null}
+            {data.trainer.status === 'onboarding' ? (
+              <LifecycleActionForm
+                action={suspendTrainer}
+                idField="trainerId"
+                idValue={data.trainer.id}
+                verb="suspend"
+                label="Suspend"
+              />
+            ) : null}
+            {data.trainer.status === 'onboarding_completed' ? (
+              <>
+                <form action={changeTrainerStatus}>
+                  <input type="hidden" name="trainerId" value={data.trainer.id} />
+                  <input type="hidden" name="status" value="active" />
+                  <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="secondary" />
+                </form>
+                <LifecycleActionForm
+                  action={suspendTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="suspend"
+                  label="Suspend"
+                />
+              </>
+            ) : null}
             {data.trainer.status === 'active' ? (
               <LifecycleActionForm
                 action={suspendTrainer}
                 idField="trainerId"
                 idValue={data.trainer.id}
                 verb="suspend"
-                label="Suspend trainer"
+                label="Suspend"
               />
             ) : null}
             {data.trainer.status === 'suspended' ? (
@@ -153,7 +194,7 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
                   idField="trainerId"
                   idValue={data.trainer.id}
                   verb="restore"
-                  label="Restore trainer"
+                  label="Activate Trainer"
                 />
                 <LifecycleActionForm
                   action={removeTrainer}
@@ -164,6 +205,16 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
                   requiresConfirm
                 />
               </>
+            ) : null}
+            {data.trainer.status !== 'suspended' ? (
+              <LifecycleActionForm
+                action={removeTrainer}
+                idField="trainerId"
+                idValue={data.trainer.id}
+                verb="remove"
+                label="Remove trainer"
+                requiresConfirm
+              />
             ) : null}
           </div>
         </AdminSection>

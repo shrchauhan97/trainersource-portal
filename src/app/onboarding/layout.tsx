@@ -27,6 +27,18 @@ export const metadata: Metadata = {
 export default async function OnboardingLayout({ children }: { children: ReactNode }) {
   const state = await loadTrainerOnboardingState();
 
+  // Trainers who finished onboarding but aren't activated yet should see
+  // the "under review" screen without the stepper or header chrome.
+  if (state.status === 'onboarding_completed') {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,87,34,0.12),_transparent_30%),linear-gradient(180deg,#0f2230_0%,#173041_20%,#eff6fb_20%,#eff6fb_100%)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main className="pb-10">{children}</main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,87,34,0.12),_transparent_30%),linear-gradient(180deg,#0f2230_0%,#173041_20%,#eff6fb_20%,#eff6fb_100%)]">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
