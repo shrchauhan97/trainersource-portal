@@ -37,8 +37,28 @@ export async function loadTrainerOnboardingState(): Promise<TrainerOnboardingSta
     redirect('/dashboard');
   }
 
+  if (trainer.status === 'onboarding_completed') {
+    // Onboarding is done but admin hasn't activated yet. Return a minimal
+    // state so the layout and page can render the "under review" screen
+    // without hitting the DB for step data that's no longer relevant.
+    return {
+      trainerId: trainer.id,
+      trainerName: trainer.name,
+      trainerEmail: trainer.email,
+      trainerCity: trainer.city,
+      trainerCountry: trainer.country,
+      status: 'onboarding_completed',
+      currentStep: 'go_live',
+      application: null,
+      qualifications: [],
+      trainingProgress: [],
+      payoutDetails: null,
+      agreement: null,
+    };
+  }
+
   if (trainer.status !== 'onboarding') {
-    redirect('/onboarding/pending');
+    redirect('/onboarding');
   }
 
   const [application, qualifications, training, payout, agreement] = await Promise.all([

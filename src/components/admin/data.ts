@@ -130,6 +130,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const trainerCounts: Record<TrainerStatus, number> = {
     applied: 0,
     onboarding: 0,
+    onboarding_completed: 0,
     active: 0,
     suspended: 0,
   };

@@ -1,6 +1,6 @@
 export type AdminRole = 'superadmin' | 'admin';
 export type TrainerTier = 'trainer' | 'lead' | 'network_partner';
-export type TrainerStatus = 'applied' | 'onboarding' | 'active' | 'suspended';
+export type TrainerStatus = 'applied' | 'onboarding' | 'onboarding_completed' | 'active' | 'suspended';
 export type CodeType = 'trainer' | 'founder' | 'organic';
 export type CodeStatus = 'active' | 'consumed' | 'expired';
 export type OrderStatus = 'pending' | 'paid' | 'shipped' | 'delivered';

@@ -114,9 +114,14 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
 
     if (!trainer) return { allowed: false, reason: 'not_authorized' };
     if (trainer.status === 'suspended') return { allowed: false, reason: 'suspended' };
-    if (trainer.status !== 'active') return { allowed: false, reason: 'not_authorized' };
+    if (
+      trainer.status !== 'active' &&
+      trainer.status !== 'onboarding' &&
+      trainer.status !== 'onboarding_completed'
+    ) {
+      return { allowed: false, reason: 'not_authorized' };
+    }
   }
-
   const { data: hasPwd, error: rpcError } = await supabase.rpc('user_has_password_by_email', {
     addr: email,
   });
@@ -186,7 +191,24 @@ export async function signInWithPasswordAction(
     return { ok: false, reason: 'not_authorized' };
   }
 
-  return { ok: true, next: role === 'admin' ? '/admin' : '/dashboard' };
+  if (role === 'admin') {
+    return { ok: true, next: '/admin' };
+  }
+
+  const { data: trainer } = await supabase
+    .from('trainers')
+    .select('status')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (
+    trainer?.status === 'onboarding' ||
+    trainer?.status === 'onboarding_completed'
+  ) {
+    return { ok: true, next: '/onboarding' };
+  }
+
+  return { ok: true, next: '/dashboard' };
 }
 
 // Server action that redirects after success. Used by the form so that

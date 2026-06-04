@@ -60,7 +60,11 @@ export async function getUserRole(email?: string | null): Promise<AppUserRole> {
       return 'suspended';
     }
 
-    if (trainer.status === 'active') {
+    if (
+      trainer.status === 'active' ||
+      trainer.status === 'onboarding' ||
+      trainer.status === 'onboarding_completed'
+    ) {
       return 'trainer';
     }
   }

@@ -128,6 +128,7 @@ export function formatDateTime(value: string) {
 export const trainerStatusOptions: TrainerStatus[] = [
   'applied',
   'onboarding',
+  'onboarding_completed',
   'active',
   'suspended',
 ];
