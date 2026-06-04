@@ -136,6 +136,17 @@ describe('signInWithPasswordAction', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
+  // SHA-6: approved-but-not-yet-active trainer must be able to sign in and
+  // land in /onboarding. Pre-fix, the role was treated as unauthorized.
+  it('happy path — onboarding role routes to /onboarding', async () => {
+    mockSignInWithPassword.mockResolvedValue(activeSessionPayload('onboarding@example.com'));
+    mockGetUserRole.mockResolvedValue('onboarding');
+
+    const result = await signInWithPasswordAction('onboarding@example.com', 'pw');
+    expect(result).toEqual({ ok: true, next: '/onboarding' });
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
   it('happy path — admin routes to /admin', async () => {
     mockSignInWithPassword.mockResolvedValue(activeSessionPayload('admin@example.com'));
     mockGetUserRole.mockResolvedValue('admin');

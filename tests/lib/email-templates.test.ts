@@ -12,6 +12,7 @@ import {
   htmlEscape,
   newClientJoinedEmail,
   firstOrderEmail,
+  trainerApprovedEmail,
 } from '@/lib/email';
 
 describe('htmlEscape', () => {
@@ -149,6 +150,54 @@ describe('newClientJoinedEmail', () => {
       clientName: 'Alice & Bob',
     });
     expect(subject).toBe('New client joined via your code — Alice & Bob');
+  });
+});
+
+// SHA-6: a trainer's approval email is the one moment they receive a
+// sign-in/onboarding link. The href interpolates a Supabase generateLink
+// URL into the HTML body; if a future refactor drops the entity-encoding,
+// the `&` query separators become invalid in an HTML attribute and some
+// mail clients silently truncate the URL.
+describe('trainerApprovedEmail', () => {
+  const onboardingInput = {
+    trainerName: 'Tim Smith',
+    signInUrl:
+      'https://proj.supabase.co/auth/v1/verify?token=abc123&type=magiclink&redirect_to=https://app.test/auth/callback',
+    status: 'onboarding' as const,
+  };
+  const activeInput = { ...onboardingInput, status: 'active' as const };
+
+  it('onboarding subject + CTA reflect "start onboarding"', () => {
+    const { subject, html } = trainerApprovedEmail(onboardingInput);
+    expect(subject).toMatch(/onboarding/i);
+    expect(html).toContain('Start onboarding');
+    expect(html).toContain('Hey Tim');
+  });
+
+  it('active subject + CTA reflect "open dashboard / welcome"', () => {
+    const { subject, html } = trainerApprovedEmail(activeInput);
+    expect(subject).toMatch(/welcome/i);
+    expect(html).toContain('Open dashboard');
+  });
+
+  it('entity-encodes the `&` query separators in the sign-in href', () => {
+    // The href appears verbatim in `<a href="...">`. `&` inside an HTML
+    // attribute must be `&amp;` to be valid; this is what stops a mail
+    // client from truncating the URL at the first `&` boundary.
+    const { html } = trainerApprovedEmail(onboardingInput);
+    // Original `&` must NOT survive into the rendered href as a bare `&`
+    // because we replaced it with `&amp;`. Look for the encoded form.
+    expect(html).toContain('token=abc123&amp;type=magiclink');
+    expect(html).not.toContain('token=abc123&type=magiclink');
+  });
+
+  it('escapes a payload smuggled through trainerName', () => {
+    const { html } = trainerApprovedEmail({
+      ...onboardingInput,
+      trainerName: '<script>alert(1)</script> Smith',
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 });
 

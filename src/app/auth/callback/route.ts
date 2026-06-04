@@ -45,12 +45,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(getLoginUrl(request, 'suspended'));
   }
 
-  if (role !== 'admin' && role !== 'trainer') {
+  if (role !== 'admin' && role !== 'trainer' && role !== 'onboarding') {
     await supabase.auth.signOut();
     return NextResponse.redirect(getLoginUrl(request, 'not_authorized'));
   }
 
-  const next = role === 'admin' ? '/admin' : '/dashboard';
+  const next =
+    role === 'admin' ? '/admin' : role === 'onboarding' ? '/onboarding' : '/dashboard';
 
   // Reset flow always goes through set-password; first-time logins (no
   // password set yet) likewise. Password-bearing returning users skip.

@@ -2,7 +2,11 @@ import type { User } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
 
-export type AppUserRole = 'admin' | 'trainer' | 'suspended' | 'unauthorized';
+// `onboarding` is the in-between role for an approved-but-not-yet-active
+// trainer. They must be able to authenticate (so they can reach the
+// /onboarding stepper), but they cannot reach /dashboard until they finish.
+// The auth/callback + signInWithPasswordAction route them to /onboarding.
+export type AppUserRole = 'admin' | 'trainer' | 'onboarding' | 'suspended' | 'unauthorized';
 
 export async function getCurrentUser(): Promise<User | null> {
   const supabase = await createClient();
@@ -62,6 +66,10 @@ export async function getUserRole(email?: string | null): Promise<AppUserRole> {
 
     if (trainer.status === 'active') {
       return 'trainer';
+    }
+
+    if (trainer.status === 'onboarding') {
+      return 'onboarding';
     }
   }
 

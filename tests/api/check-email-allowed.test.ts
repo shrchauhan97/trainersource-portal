@@ -89,7 +89,7 @@ describe('checkEmailAllowed', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  it('onboarding/applied trainer (not yet active) returns not_authorized', async () => {
+  it('applied trainer (not yet approved) returns not_authorized', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'admins') return adminsRow(null);
       if (table === 'trainers') return trainersRow({ status: 'applied' });
@@ -98,6 +98,23 @@ describe('checkEmailAllowed', () => {
 
     const result = await checkEmailAllowed('applicant@example.com');
     expect(result).toEqual({ allowed: false, reason: 'not_authorized' });
+  });
+
+  // SHA-6 regression — pre-fix, 'onboarding' trainers were rejected as
+  // not_authorized at the login form, so the approval magic-link email
+  // dead-ended the moment they clicked it. They MUST flow through to the
+  // RPC password check (and ultimately /onboarding) just like an active
+  // trainer.
+  it('onboarding (approved) trainer is allowed; hasPassword reflects RPC', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'admins') return adminsRow(null);
+      if (table === 'trainers') return trainersRow({ status: 'onboarding' });
+      throw new Error('unexpected table: ' + table);
+    });
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const result = await checkEmailAllowed('approved@example.com');
+    expect(result).toEqual({ allowed: true, hasPassword: false });
   });
 
   it('unknown email returns not_authorized', async () => {

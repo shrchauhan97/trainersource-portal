@@ -114,7 +114,13 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
 
     if (!trainer) return { allowed: false, reason: 'not_authorized' };
     if (trainer.status === 'suspended') return { allowed: false, reason: 'suspended' };
-    if (trainer.status !== 'active') return { allowed: false, reason: 'not_authorized' };
+    // 'onboarding' trainers MUST be allowed to log in — they were just
+    // approved by an admin and need to walk through /onboarding to flip
+    // to 'active'. Without this, the approval email's sign-in link
+    // dead-ends at "not authorized" (SHA-6).
+    if (trainer.status !== 'active' && trainer.status !== 'onboarding') {
+      return { allowed: false, reason: 'not_authorized' };
+    }
   }
 
   const { data: hasPwd, error: rpcError } = await supabase.rpc('user_has_password_by_email', {
@@ -181,12 +187,14 @@ export async function signInWithPasswordAction(
     await supabase.auth.signOut();
     return { ok: false, reason: 'suspended' };
   }
-  if (role !== 'admin' && role !== 'trainer') {
+  if (role !== 'admin' && role !== 'trainer' && role !== 'onboarding') {
     await supabase.auth.signOut();
     return { ok: false, reason: 'not_authorized' };
   }
 
-  return { ok: true, next: role === 'admin' ? '/admin' : '/dashboard' };
+  const next =
+    role === 'admin' ? '/admin' : role === 'onboarding' ? '/onboarding' : '/dashboard';
+  return { ok: true, next };
 }
 
 // Server action that redirects after success. Used by the form so that

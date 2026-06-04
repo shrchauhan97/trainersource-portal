@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 
 import { getCurrentAdminEmail } from '@/lib/auth';
 import { deleteBcCustomer } from '@/lib/bc-rest-client';
+import { getSiteUrl, sendEmail, trainerApprovedEmail } from '@/lib/email';
 import {
   isRemovableReason,
   requireSuperadmin,
@@ -95,6 +96,77 @@ async function ensureUniqueSlug(
   }
 }
 
+// SHA-6: when an admin approves a trainer (status transitions INTO onboarding
+// or active from any pre-approval state), send them a one-shot magic-link
+// sign-in email. Without this, an approved trainer has no way to land in the
+// portal — there's no welcome flow, and the login UI rejects 'onboarding'
+// trainers without this fix (see `checkEmailAllowed`).
+//
+// Fire-and-forget — email failures must NEVER break the status mutation.
+// The status change is the source of truth; admin can re-trigger the email
+// by toggling status if delivery fails.
+async function sendTrainerApprovalEmail(args: {
+  trainerName: string;
+  trainerEmail: string;
+  status: 'onboarding' | 'active';
+}): Promise<void> {
+  try {
+    const service = createServiceClient();
+    const baseUrl = getSiteUrl();
+    // generateLink mints a one-shot magic-link token via the admin API and
+    // returns a Supabase verify URL. When the trainer clicks it, Supabase
+    // verifies the token and redirects to our `/auth/callback`, which mints
+    // the SSR session cookie and routes by role. Using generateLink (instead
+    // of signInWithOtp from the client) avoids sending TWO emails — the
+    // Supabase auto-email AND ours — and keeps the link copy under our
+    // control.
+    const { data, error } = await service.auth.admin.generateLink({
+      type: 'magiclink',
+      email: args.trainerEmail,
+      options: { redirectTo: `${baseUrl}/auth/callback` },
+    });
+    if (error || !data?.properties?.action_link) {
+      console.error('[approval-email] generateLink failed', {
+        email: args.trainerEmail,
+        error: error?.message,
+      });
+      return;
+    }
+    const tpl = trainerApprovedEmail({
+      trainerName: args.trainerName,
+      signInUrl: data.properties.action_link,
+      status: args.status,
+    });
+    const result = await sendEmail({
+      to: args.trainerEmail,
+      subject: tpl.subject,
+      html: tpl.html,
+    });
+    if (!result.ok) {
+      console.warn('[approval-email] send failed', {
+        email: args.trainerEmail,
+        error: result.error,
+      });
+    }
+  } catch (err) {
+    console.error('[approval-email] threw', err);
+  }
+}
+
+// Returns true when the status transition is the "approval" moment: from a
+// pre-approval state (applied / suspended / undefined) into a post-approval
+// state (onboarding / active). Excludes the normal onboarding → active
+// progression a trainer drives themselves through the stepper — they already
+// have a session and don't need a fresh sign-in link.
+function isApprovalTransition(
+  prev: TrainerStatus | null | undefined,
+  next: TrainerStatus,
+): next is 'onboarding' | 'active' {
+  if (next !== 'onboarding' && next !== 'active') return false;
+  if (prev === 'onboarding' || prev === 'active') return false;
+  return true;
+}
+
 async function suspendTrainerCodes(supabase: SupabaseClient, trainerId: string) {
   const { error } = await supabase
     .from('access_codes')
@@ -164,6 +236,12 @@ export async function createTrainer(formData: FormData): Promise<void> {
     throw error;
   }
 
+  // SHA-6: admin-created trainer that lands directly in onboarding/active
+  // needs a sign-in link — they have no auth credentials yet.
+  if (isApprovalTransition(null, status)) {
+    await sendTrainerApprovalEmail({ trainerName: name, trainerEmail: email, status });
+  }
+
   revalidateAdminPages();
 }
 
@@ -178,7 +256,7 @@ export async function updateTrainer(formData: FormData): Promise<void> {
 
   const { data: existingTrainer, error: existingTrainerError } = await supabase
     .from('trainers')
-    .select('id, name, status, onboarding_completed_at')
+    .select('id, name, email, status, onboarding_completed_at')
     .eq('id', trainerId)
     .maybeSingle();
 
@@ -244,6 +322,12 @@ export async function updateTrainer(formData: FormData): Promise<void> {
     await suspendTrainerCodes(supabase, trainerId);
   }
 
+  // SHA-6: status transitioning into onboarding/active from a pre-approval
+  // state is the approval moment — send the sign-in/onboarding link.
+  if (isApprovalTransition(existingTrainer.status as TrainerStatus, status)) {
+    await sendTrainerApprovalEmail({ trainerName: name, trainerEmail: email, status });
+  }
+
   revalidateAdminPages(`/admin/trainers/${trainerId}`);
 }
 
@@ -256,6 +340,16 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
   if (!trainerId || !status) {
     throw new Error('Trainer id and status are required.');
   }
+
+  // Read BEFORE the update so we know whether this is an approval transition.
+  // We deliberately don't fail the mutation if this read fails — fall back to
+  // null prev-status which conservatively triggers the approval email for any
+  // status that is itself onboarding/active.
+  const { data: existing } = await supabase
+    .from('trainers')
+    .select('name, email, status')
+    .eq('id', trainerId)
+    .maybeSingle();
 
   const updates: {
     status: TrainerStatus;
@@ -274,6 +368,21 @@ export async function changeTrainerStatus(formData: FormData): Promise<void> {
 
   if (status === 'suspended') {
     await suspendTrainerCodes(supabase, trainerId);
+  }
+
+  if (
+    existing?.name &&
+    existing.email &&
+    isApprovalTransition(
+      (existing.status as TrainerStatus | null | undefined) ?? null,
+      status,
+    )
+  ) {
+    await sendTrainerApprovalEmail({
+      trainerName: existing.name,
+      trainerEmail: existing.email,
+      status,
+    });
   }
 
   revalidateAdminPages(`/admin/trainers/${trainerId}`);

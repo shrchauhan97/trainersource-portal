@@ -106,6 +106,31 @@ describe('GET /auth/callback', () => {
     expect(await getLocation(res)).toContain('/admin');
   });
 
+  // SHA-6: a freshly-approved trainer (status='onboarding') clicks the
+  // magic link from their approval email. Without this branch, the
+  // callback signs them out as `not_authorized` and the link silently
+  // dead-ends. They MUST be routed to /onboarding so they can finish
+  // setup; the set-password gate (hasPwd === false) is the normal first
+  // step, otherwise straight to /onboarding.
+  it('hasPwd === false routes onboarding role to set-password next=/onboarding', async () => {
+    mockGetUserRole.mockResolvedValueOnce('onboarding');
+    mockRpc.mockResolvedValueOnce({ data: false, error: null });
+    const res = await GET(buildRequest({ code: 'x' }));
+    const loc = await getLocation(res);
+    expect(loc).toContain('/account/set-password');
+    expect(loc).toContain('next=%2Fonboarding');
+  });
+
+  it('hasPwd === true routes onboarding role straight to /onboarding', async () => {
+    mockGetUserRole.mockResolvedValueOnce('onboarding');
+    mockRpc.mockResolvedValueOnce({ data: true, error: null });
+    const res = await GET(buildRequest({ code: 'x' }));
+    const loc = await getLocation(res);
+    expect(loc).toContain('/onboarding');
+    expect(loc).not.toContain('/dashboard');
+    expect(loc).not.toContain('/admin');
+  });
+
   it('rpc error surfaces auth_callback_failed (does not silently force reset)', async () => {
     mockGetUserRole.mockResolvedValueOnce('trainer');
     mockRpc.mockResolvedValueOnce({

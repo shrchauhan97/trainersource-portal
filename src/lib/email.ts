@@ -300,6 +300,43 @@ export function firstOrderEmail(input: {
   };
 }
 
+export function trainerApprovedEmail(input: {
+  trainerName: string;
+  signInUrl: string;
+  status: 'onboarding' | 'active';
+}) {
+  // `signInUrl` comes from Supabase admin.generateLink — it's a Supabase
+  // verify URL that includes a one-shot token. It is NOT user input. We
+  // still entity-encode it for the href attribute because the URL contains
+  // `&` query separators, which are syntactically `&amp;` inside an HTML
+  // attribute value; many mail clients are strict about that.
+  const trainerFirstName = htmlEscape(input.trainerName.split(' ')[0] ?? '');
+  const safeHref = htmlEscape(input.signInUrl);
+  const isActive = input.status === 'active';
+  const headline = isActive
+    ? "You're approved — welcome aboard."
+    : "You're approved. Let's get you set up.";
+  const subject = isActive
+    ? 'Welcome to TrainerSource — sign in to your dashboard'
+    : "You're approved — let's finish onboarding";
+  const ctaLabel = isActive ? 'Open dashboard' : 'Start onboarding';
+  const intro = isActive
+    ? `Hey ${trainerFirstName} — your application is approved and your account is live. Click below to sign in.`
+    : `Hey ${trainerFirstName} — your application is approved. Click below to sign in and walk through the onboarding checklist.`;
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      ${intro}
+    </p>
+    <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#41627b;">
+      This link signs you in once and expires shortly. If it stops working, request a fresh magic link from the login page using the email this was sent to.
+    </p>
+  `;
+  return {
+    subject,
+    html: shell(headline, body, { label: ctaLabel, href: safeHref }),
+  };
+}
+
 export function newTrainerApplicationEmail(input: {
   trainerName: string;
   trainerEmail: string;
