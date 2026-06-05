@@ -41,4 +41,4 @@ jobs:
       # without it — they belong in a separate secrets-injected nightly job
       # (see peptides-ops:docs/nightly-sweep-hardening.md).
       - name: Test
-        run: pnpm test -- tests/unit tests/lib tests/api tests/mini
+        run: pnpm exec vitest run tests/unit tests/lib tests/api tests/mini
