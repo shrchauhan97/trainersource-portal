@@ -36,5 +36,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Runs the unit/api/lib/mini suites (no secrets needed). The
+      # tests/integration/** suites require a real SUPABASE_URL and throw
+      # without it — they belong in a separate secrets-injected nightly job
+      # (see peptides-ops:docs/nightly-sweep-hardening.md).
       - name: Test
-        run: pnpm test
+        run: pnpm test -- tests/unit tests/lib tests/api tests/mini
