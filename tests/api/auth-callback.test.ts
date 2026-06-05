@@ -6,6 +6,12 @@ const mockExchange = vi.fn();
 const mockGetUser = vi.fn();
 const mockSignOut = vi.fn();
 const mockRpc = vi.fn();
+// Post-rebase: the callback now resolves the trainer's status
+// (.from('trainers').select('status').eq('email', …).maybeSingle()) for the
+// trainer role to choose between /onboarding and /dashboard. Default to a
+// non-onboarding trainer so the existing "/dashboard" assertions hold;
+// tests can override mockTrainerStatus.
+let mockTrainerStatus: string | null = 'active';
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() =>
@@ -16,6 +22,20 @@ vi.mock('@/lib/supabase/server', () => ({
         signOut: mockSignOut,
       },
       rpc: mockRpc,
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data:
+                  mockTrainerStatus === null
+                    ? null
+                    : { status: mockTrainerStatus },
+                error: null,
+              }),
+          }),
+        }),
+      }),
     })
   ),
 }));
@@ -39,6 +59,7 @@ async function getLocation(res: Response): Promise<string | null> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTrainerStatus = 'active';
   mockExchange.mockResolvedValue({ error: null });
   mockGetUser.mockResolvedValue({
     data: { user: { id: 'uid-1', email: 'trainer@example.com' } },

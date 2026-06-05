@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { changeTrainerStatus, createTrainer } from '@/app/admin/actions';
+import { CreateTrainerDropdown } from '@/components/admin/CreateTrainerDropdown';
+import { changeTrainerStatus } from '@/app/admin/actions';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import { StatusBadge } from '@/components/admin/StatusBadge';
@@ -22,6 +23,7 @@ type TrainersPageProps = {
   }>;
 };
 
+
 export default async function AdminTrainersPage({ searchParams }: TrainersPageProps) {
   const params = await searchParams;
   const status = getSearchValue(params.status);
@@ -36,42 +38,8 @@ export default async function AdminTrainersPage({ searchParams }: TrainersPagePr
         description="Create trainer records, filter the roster, move applications through the status journey, and jump into a full detail view for edits."
       >
         <div className="grid gap-8 xl:grid-cols-[1.2fr,2fr]">
-          <form action={createTrainer} className="space-y-4 rounded-[1.8rem] border border-slate-200 bg-slate-50/80 p-5">
-            <div>
-              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.32em] text-slate-400">Create trainer</p>
-              <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">New partner profile</h3>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input name="name" placeholder="Full name" required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="email" type="email" placeholder="Email" required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="country" placeholder="Country" required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="city" placeholder="City" required className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="phone" placeholder="Phone" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="slug" placeholder="Custom slug" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <select name="tier" defaultValue="trainer" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
-                <option value="trainer">Trainer</option>
-                <option value="lead">Lead</option>
-                <option value="network_partner">Network Partner</option>
-              </select>
-              <select name="status" defaultValue="applied" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
-                {trainerStatusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              <input name="commission_rate" type="number" min="0" max="1" step="0.01" defaultValue="0.2" placeholder="Commission rate" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="reorder_commission_rate" type="number" min="0" max="1" step="0.01" defaultValue="0.1" placeholder="Reorder rate" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="max_clients" type="number" min="1" step="1" defaultValue="100" placeholder="Max clients" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-              <input name="wise_account" placeholder="Wise account" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            </div>
-
-            <input name="niche" placeholder="Niche" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="social_media" placeholder="Social profile" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-
-            <SubmitButton label="Create trainer" pendingLabel="Creating trainer" className="w-full" />
-          </form>
+          
+           <CreateTrainerDropdown />
 
           <div className="space-y-5">
             <form className="grid gap-4 rounded-[1.8rem] border border-slate-200 bg-white p-5 md:grid-cols-[1fr,1fr,auto]">
@@ -119,6 +87,9 @@ export default async function AdminTrainersPage({ searchParams }: TrainersPagePr
                         <Link href={`/admin/trainers/${trainer.id}`} className="block">
                           <p className="font-semibold text-slate-900 transition hover:text-hyrox-orange">{trainer.name}</p>
                           <p className="mt-1 text-slate-500">{trainer.email}</p>
+                          {trainer.status === 'applied' && (
+                            <p className="mt-1 text-emerald-500 font-medium">● Review Profile</p>
+                          )}
                         </Link>
                       </td>
                       <td className="px-5 py-5">
@@ -140,14 +111,21 @@ export default async function AdminTrainersPage({ searchParams }: TrainersPagePr
                             <form action={changeTrainerStatus}>
                               <input type="hidden" name="trainerId" value={trainer.id} />
                               <input type="hidden" name="status" value="onboarding" />
-                              <SubmitButton label="Approve" pendingLabel="Approving" variant="primary" />
+                              <SubmitButton label="Invite Into Onboarding" pendingLabel="Inviting Into Onboarding" variant="primary" />
                             </form>
                           ) : null}
-                          {trainer.status !== 'active' ? (
+                          {trainer.status === 'onboarding_completed' ? (
                             <form action={changeTrainerStatus}>
                               <input type="hidden" name="trainerId" value={trainer.id} />
                               <input type="hidden" name="status" value="active" />
-                              <SubmitButton label="Activate" pendingLabel="Activating" variant="secondary" />
+                              <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="secondary" />
+                            </form>
+                          ) : null}
+                          {trainer.status === 'suspended' ? (
+                            <form action={changeTrainerStatus}>
+                              <input type="hidden" name="trainerId" value={trainer.id} />
+                              <input type="hidden" name="status" value="active" />
+                              <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="primary" />
                             </form>
                           ) : null}
                           {trainer.status !== 'suspended' ? (

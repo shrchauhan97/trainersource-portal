@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { checkEmailAllowed, signInRedirect, type CheckEmailResult } from './actions';
 
 const callbackErrorMessages: Record<string, string> = {
-  auth_callback_failed: 'We could not complete sign in. Please request a new magic link.',
+  auth_callback_failed: 'The confirmation link didn\'t work. This can happen if you clicked it in a different browser profile. Try requesting a new magic link from the same browser where you signed up.',
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
 };
@@ -70,8 +70,9 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
       }
       setEmail(normalizedEmail);
       setHasPassword(result.hasPassword);
-      setStep('password');
-      if (!result.hasPassword) {
+      if (result.hasPassword) {
+        setStep('password');
+      } else {
         await sendMagicLink(normalizedEmail);
       }
     } finally {

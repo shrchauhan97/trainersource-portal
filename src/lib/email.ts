@@ -396,3 +396,69 @@ export function newTrainerApplicationEmail(input: {
     }),
   };
 }
+
+export function trainerOnboardingInviteEmail(input: {
+  trainerName: string;
+  city: string;
+}) {
+  const subject = 'Invitation to TrainerSource Onboarding';
+  const trainerName = htmlEscape(input.trainerName);
+  const city = htmlEscape(input.city);
+
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Hey ${trainerName},
+    </p>
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      You've recently applied to become a TrainerSource affiliate in <strong>${city}</strong>. After reviewing your application, we're excited to invite you into our Onboarding process.
+    </p>
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      This simple process will ask you to share your credentials and goals, undergo a short training course and sign an Affiliate Agreement. After this onboarding process is complete, you'll be an Active affiliate and can begin referring clients to TrainerSource products.
+    </p>
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Hit the link below to start your onboarding process. (Have copies of any relevant credential documents ready for upload.)
+    </p>
+    <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Looking forward to working with you!
+      <br/>— The TrainerSource Team
+    </p>
+  `;
+
+  return {
+    subject,
+    html: shell('You have been invited into onboarding.', body, {
+      label: 'Start Onboarding',
+      href: `${getSiteUrl()}/onboarding/application`,
+    }),
+  };
+}
+
+export function onboardingCompleteAdminEmail(input: {
+  trainerId: string;
+  trainerName: string;
+  trainerEmail: string;
+  city: string;
+}) {
+  const subject = 'New Trainer Status Update - Onboarding Complete';
+  const trainerName = htmlEscape(input.trainerName);
+  const trainerEmail = htmlEscape(input.trainerEmail);
+  const city = htmlEscape(input.city);
+
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      ${trainerName} has finished onboarding and is waiting for admin activation.
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;border-collapse:collapse;">
+      <tr><td style="padding:6px 16px 6px 0;font-size:12px;color:#41627b;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">Email</td><td style="padding:6px 0;font-size:14px;color:#173041;">${trainerEmail}</td></tr>
+      <tr><td style="padding:6px 16px 6px 0;font-size:12px;color:#41627b;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">City</td><td style="padding:6px 0;font-size:14px;color:#173041;">${city}</td></tr>
+    </table>
+  `;
+
+  return {
+    subject,
+    html: shell('Trainer onboarding is complete.', body, {
+      label: 'Review trainer',
+      href: `${getSiteUrl()}/admin/trainers/${input.trainerId}`,
+    }),
+  };
+}

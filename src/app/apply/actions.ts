@@ -40,24 +40,40 @@ async function notifyAdminsOfApplication(payload: {
     }
 
     const { subject, html } = newTrainerApplicationEmail(payload);
-    const results = await Promise.allSettled(
-      recipients.map((to) => sendEmail({ to, subject, html }))
-    );
-    const succeeded = results.filter(
-      (r) => r.status === 'fulfilled' && r.value.ok
-    ).length;
-    const failed = results.length - succeeded;
+
+    // Resend free tier = 2 req/s. Send sequentially with a 600ms gap
+    // to stay under the limit. Retry once on 429 (rate-limit).
+    const SEND_GAP_MS = 600;
+    const RATE_LIMIT_RETRY_MS = 1000;
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < recipients.length; i++) {
+      const to = recipients[i];
+      if (i > 0) await delay(SEND_GAP_MS);
+
+      let result = await sendEmail({ to, subject, html });
+
+      if (!result.ok && result.error?.includes('Too many requests')) {
+        console.warn(`[apply] rate-limited for ${to}, retrying in ${RATE_LIMIT_RETRY_MS}ms`);
+        await delay(RATE_LIMIT_RETRY_MS);
+        result = await sendEmail({ to, subject, html });
+      }
+
+      if (result.ok) {
+        succeeded++;
+      } else {
+        failed++;
+        console.error(`[apply] email FAILED to ${to}:`, result.error);
+      }
+    }
+
     if (failed > 0) {
-      console.error('[apply] admin notification fan-out partial failure', {
-        succeeded,
-        failed,
-        total: results.length,
-        details: results
-          .map((r, i) => (r.status === 'rejected' ? { recipient: recipients[i], reason: String(r.reason) } : r.status === 'fulfilled' && !r.value.ok ? { recipient: recipients[i], reason: r.value.error } : null))
-          .filter(Boolean),
-      });
+      console.error('[apply] admin notification partial failure', { succeeded, failed, total: recipients.length });
     } else {
-      console.info('[apply] admin notification fan-out delivered', { count: succeeded });
+      console.info('[apply] admin notification delivered to all', succeeded, 'admin(s)');
     }
   } catch (err) {
     console.error('[apply] notifyAdminsOfApplication threw', err);
@@ -208,16 +224,26 @@ export async function submitApplication(formData: FormData) {
     return { error: friendlyDbError(error) };
   }
 
-  after(() =>
-    notifyAdminsOfApplication({
-      trainerName: name,
-      trainerEmail: email,
-      city,
-      country,
-      niche: niche || null,
-      socialMedia: social_media || null,
-    })
-  );
+  // Best of both worlds: after() keeps Vercel production responses fast
+  // (async fire-and-forget), while the catch fallback awaits the sends
+  // synchronously so emails always fire in local dev / environments where
+  // after() is not available or gets torn down early.
+  const notifyPayload = {
+    trainerName: name,
+    trainerEmail: email,
+    city,
+    country,
+    niche: niche || null,
+    socialMedia: social_media || null,
+  };
+  try {
+    after(() => notifyAdminsOfApplication(notifyPayload));
+  } catch {
+    // after() is not available (e.g. local next dev) — await directly.
+    // notifyAdminsOfApplication is fully try/caught internally so this
+    // never throws and never breaks the response.
+    await notifyAdminsOfApplication(notifyPayload);
+  }
 
   return { success: true, data };
 }

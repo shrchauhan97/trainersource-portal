@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
+import { onboardingCompleteAdminEmail, sendEmail } from '@/lib/email';
 import type { OnboardingStep } from '../_lib/types';
 
 // Distinct quiz questions the trainer must have answered correctly to pass
@@ -21,9 +23,84 @@ export type GoLiveResult =
   | { ok: true }
   | { ok: false; error: string; incompleteStep?: OnboardingStep };
 
-// Server Action that flips a trainer from 'onboarding' → 'active' once every
-// prior step is complete. Replaces the legacy `completeOnboarding` action
-// from the single-page onboarding flow.
+/** Pause execution for the given milliseconds. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Resend free tier = 2 req/s. Sequential sends with a 600ms gap keeps us
+// under that ceiling. We also retry once on 429 (rate-limit) with a 1 s
+// back-off so a transient burst from another route doesn't silently drop
+// an email.
+const SEND_GAP_MS = 600;
+const RATE_LIMIT_RETRY_MS = 1000;
+
+async function notifyAdminsOfOnboardingCompletion(payload: {
+  trainerId: string;
+  trainerName: string;
+  trainerEmail: string;
+  city: string;
+}): Promise<void> {
+  try {
+    const supabase = createServiceClient();
+    const { data: admins, error } = await supabase.from('admins').select('email');
+    if (error) {
+      console.error('[go-live] could not load admin list', error);
+      return;
+    }
+
+    const recipients = (admins ?? [])
+      .map((admin) => (admin.email as string | null)?.trim())
+      .filter((email): email is string => Boolean(email));
+
+    console.log('[go-live] admin recipients for onboarding completion:', recipients);
+
+    if (!recipients.length) {
+      console.warn('[go-live] no admins to notify of onboarding completion');
+      return;
+    }
+
+    const { subject, html } = onboardingCompleteAdminEmail(payload);
+    console.log('[go-live] sending onboarding-complete email to', recipients.length, 'admin(s), subject:', subject);
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < recipients.length; i++) {
+      const to = recipients[i];
+      // Throttle: wait before each send (except the first)
+      if (i > 0) await delay(SEND_GAP_MS);
+
+      let result = await sendEmail({ to, subject, html });
+
+      // Retry once on rate-limit (429)
+      if (!result.ok && result.error?.includes('Too many requests')) {
+        console.warn(`[go-live] rate-limited for ${to}, retrying in ${RATE_LIMIT_RETRY_MS}ms`);
+        await delay(RATE_LIMIT_RETRY_MS);
+        result = await sendEmail({ to, subject, html });
+      }
+
+      if (result.ok) {
+        succeeded++;
+        console.log(`[go-live] email sent to ${to}:`, result);
+      } else {
+        failed++;
+        console.error(`[go-live] email FAILED to ${to}:`, result.error);
+      }
+    }
+
+    if (failed > 0) {
+      console.error('[go-live] admin notification partial failure', { succeeded, failed, total: recipients.length });
+    } else {
+      console.info('[go-live] admin notification delivered to all', succeeded, 'admin(s)');
+    }
+  } catch (err) {
+    console.error('[go-live] notifyAdminsOfOnboardingCompletion threw', err);
+  }
+}
+
+// Server Action that flips a trainer from 'onboarding' → 'onboarding_completed'
+// once every prior step is complete. Admin activation happens later.
 export async function completeOnboardingV2(trainerId: string): Promise<GoLiveResult> {
   const supabase = await createClient();
 
@@ -40,7 +117,7 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
   // anything; the trainerId arrives from the client and must be authenticated.
   const { data: trainer, error: trainerLookupError } = await supabase
     .from('trainers')
-    .select('id, status')
+    .select('id, name, email, city, status')
     .eq('id', trainerId)
     .eq('email', sessionEmail)
     .maybeSingle();
@@ -53,12 +130,18 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
     redirect('/dashboard');
   }
 
+  if (trainer.status === 'onboarding_completed') {
+    redirect('/onboarding');
+  }
+
   if (trainer.status !== 'onboarding') {
     return {
       ok: false,
       error: 'Your onboarding status is no longer eligible for completion.',
     };
   }
+
+  
 
   // Pull every gating record in parallel — completion validation needs all of
   // them and we'd rather pay one round trip than four.
@@ -166,7 +249,7 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
   const { error: updateError } = await supabase
     .from('trainers')
     .update({
-      status: 'active',
+      status: 'onboarding_completed',
       onboarding_step: 'go_live',
       onboarding_completed_at: new Date().toISOString(),
     })
@@ -176,8 +259,15 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
     return { ok: false, error: updateError.message };
   }
 
+  await notifyAdminsOfOnboardingCompletion({
+    trainerId: trainer.id,
+    trainerName: trainer.name,
+    trainerEmail: trainer.email,
+    city: trainer.city,
+  });
+
   revalidatePath('/onboarding');
   revalidatePath('/dashboard');
 
-  redirect('/dashboard');
+  redirect('/onboarding');
 }

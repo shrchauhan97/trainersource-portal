@@ -97,7 +97,7 @@ export type TrainerOnboardingState = {
   trainerEmail: string;
   trainerCity: string | null;
   trainerCountry: string | null;
-  status: 'applied' | 'onboarding' | 'active' | 'suspended';
+  status: 'applied' | 'onboarding' | 'onboarding_completed' | 'active' | 'suspended';
   currentStep: OnboardingStep;
   application: TrainerApplicationDetails | null;
   qualifications: TrainerQualification[];

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
+import { changeTrainerStatus, suspendTrainer, removeTrainer, restoreTrainer, updateTrainer } from '@/app/admin/actions';
 
 export const metadata: Metadata = { title: 'Trainer detail' };
 import { AdminSection } from '@/components/admin/AdminSection';
@@ -64,44 +64,127 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
 
       <div className="grid gap-8 xl:grid-cols-[1.15fr,0.85fr]">
         <AdminSection eyebrow="CRUD" title="Trainer record" description="Edit the core trainer profile, compensation setup, and payout details.">
-          <form action={updateTrainer} className="grid gap-4 md:grid-cols-2">
+                   <form action={updateTrainer} className="grid gap-6 md:grid-cols-2">
             <input type="hidden" name="trainerId" value={data.trainer.id} />
-            <input name="name" defaultValue={data.trainer.name} required className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="email" type="email" defaultValue={data.trainer.email} required className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="phone" defaultValue={data.trainer.phone ?? ''} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="slug" defaultValue={data.trainer.slug ?? ''} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="country" defaultValue={data.trainer.country} required className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="city" defaultValue={data.trainer.city} required className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <select name="tier" defaultValue={data.trainer.tier} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
-              <option value="trainer">Trainer</option>
-              <option value="lead">Lead</option>
-              <option value="network_partner">Network Partner</option>
-            </select>
-            <select name="status" defaultValue={data.trainer.status} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
-              {trainerStatusOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <input name="commission_rate" type="number" min="0" max="1" step="0.01" defaultValue={Number(data.trainer.commission_rate ?? 0)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="reorder_commission_rate" type="number" min="0" max="1" step="0.01" defaultValue={Number(data.trainer.reorder_commission_rate ?? 0)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="max_clients" type="number" min="1" step="1" defaultValue={data.trainer.max_clients} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="wise_account" defaultValue={data.trainer.wise_account ?? ''} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
-            <input name="niche" defaultValue={data.trainer.niche ?? ''} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate md:col-span-2" />
-            <input name="social_media" defaultValue={data.trainer.social_media ?? ''} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate md:col-span-2" />
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-slate-600 mb-2">Full name</label>
+              <input id="name" name="name" defaultValue={data.trainer.name} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-slate-600 mb-2">Email address</label>
+              <input id="email" name="email" type="email" defaultValue={data.trainer.email} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-slate-600 mb-2">Phone</label>
+              <input id="phone" name="phone" defaultValue={data.trainer.phone ?? ''} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="slug" className="block text-sm font-medium text-slate-600 mb-2">Custom slug</label>
+              <input id="slug" name="slug" defaultValue={data.trainer.slug ?? ''} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="country" className="block text-sm font-medium text-slate-600 mb-2">Country</label>
+              <input id="country" name="country" defaultValue={data.trainer.country} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="city" className="block text-sm font-medium text-slate-600 mb-2">City</label>
+              <input id="city" name="city" defaultValue={data.trainer.city} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="tier" className="block text-sm font-medium text-slate-600 mb-2">Tier</label>
+              <select id="tier" name="tier" defaultValue={data.trainer.tier} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
+                <option value="trainer">Trainer</option>
+                <option value="lead">Lead</option>
+                <option value="network_partner">Network Partner</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-slate-600 mb-2">Status</label>
+              <select id="status" name="status" defaultValue={data.trainer.status} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate">
+                {trainerStatusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="commission_rate" className="block text-sm font-medium text-slate-600 mb-2">Commission rate</label>
+              <input id="commission_rate" name="commission_rate" type="number" min="0" max="1" step="0.01" defaultValue={Number(data.trainer.commission_rate ?? 0)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="reorder_commission_rate" className="block text-sm font-medium text-slate-600 mb-2">Reorder commission rate</label>
+              <input id="reorder_commission_rate" name="reorder_commission_rate" type="number" min="0" max="1" step="0.01" defaultValue={Number(data.trainer.reorder_commission_rate ?? 0)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="max_clients" className="block text-sm font-medium text-slate-600 mb-2">Max clients</label>
+              <input id="max_clients" name="max_clients" type="number" min="1" step="1" defaultValue={data.trainer.max_clients} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div>
+              <label htmlFor="wise_account" className="block text-sm font-medium text-slate-600 mb-2">Wise account</label>
+              <input id="wise_account" name="wise_account" defaultValue={data.trainer.wise_account ?? ''} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div className="md:col-span-2">
+              <label htmlFor="niche" className="block text-sm font-medium text-slate-600 mb-2">Niche</label>
+              <input id="niche" name="niche" defaultValue={data.trainer.niche ?? ''} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
+            <div className="md:col-span-2">
+              <label htmlFor="social_media" className="block text-sm font-medium text-slate-600 mb-2">Social profile</label>
+              <input id="social_media" name="social_media" defaultValue={data.trainer.social_media ?? ''} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-clinical-slate" />
+            </div>
             <div className="md:col-span-2">
               <SubmitButton label="Save trainer" pendingLabel="Saving trainer" variant="primary" />
             </div>
           </form>
           <div className="mt-4 flex flex-wrap gap-3">
+            {data.trainer.status === 'applied' ? (
+              <>
+                <form action={changeTrainerStatus}>
+                  <input type="hidden" name="trainerId" value={data.trainer.id} />
+                  <input type="hidden" name="status" value="onboarding" />
+                  <SubmitButton label="Invite Into Onboarding" pendingLabel="Inviting Into Onboarding" variant="primary" />
+                </form>
+                <LifecycleActionForm
+                  action={suspendTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="suspend"
+                  label="Suspend"
+                />
+              </>
+            ) : null}
+            {data.trainer.status === 'onboarding' ? (
+              <LifecycleActionForm
+                action={suspendTrainer}
+                idField="trainerId"
+                idValue={data.trainer.id}
+                verb="suspend"
+                label="Suspend"
+              />
+            ) : null}
+            {data.trainer.status === 'onboarding_completed' ? (
+              <>
+                <form action={changeTrainerStatus}>
+                  <input type="hidden" name="trainerId" value={data.trainer.id} />
+                  <input type="hidden" name="status" value="active" />
+                  <SubmitButton label="Activate Trainer" pendingLabel="Activating Trainer" variant="secondary" />
+                </form>
+                <LifecycleActionForm
+                  action={suspendTrainer}
+                  idField="trainerId"
+                  idValue={data.trainer.id}
+                  verb="suspend"
+                  label="Suspend"
+                />
+              </>
+            ) : null}
             {data.trainer.status === 'active' ? (
               <LifecycleActionForm
                 action={suspendTrainer}
                 idField="trainerId"
                 idValue={data.trainer.id}
                 verb="suspend"
-                label="Suspend trainer"
+                label="Suspend"
               />
             ) : null}
             {data.trainer.status === 'suspended' ? (
@@ -111,7 +194,7 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
                   idField="trainerId"
                   idValue={data.trainer.id}
                   verb="restore"
-                  label="Restore trainer"
+                  label="Activate Trainer"
                 />
                 <LifecycleActionForm
                   action={removeTrainer}
@@ -122,6 +205,16 @@ export default async function AdminTrainerDetailPage({ params }: TrainerDetailPa
                   requiresConfirm
                 />
               </>
+            ) : null}
+            {data.trainer.status !== 'suspended' ? (
+              <LifecycleActionForm
+                action={removeTrainer}
+                idField="trainerId"
+                idValue={data.trainer.id}
+                verb="remove"
+                label="Remove trainer"
+                requiresConfirm
+              />
             ) : null}
           </div>
         </AdminSection>
