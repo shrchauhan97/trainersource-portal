@@ -35,12 +35,17 @@ vi.mock('@/lib/session-token', () => ({
   mintSessionToken: () => 'fake-session-token',
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   rpcMock.mockReset();
   fromMock.mockReset();
   // Set just enough env for any code paths that read it. createServiceClient
   // is fully mocked above so its env vars are irrelevant.
   vi.stubEnv('ACCESS_GATE_ALLOWED_ORIGINS', 'https://ultimate-peptides.com');
+  // The route now keeps a module-local IP rate-limit bucket. Clear it so
+  // accumulated state from a prior `it()` (or another suite running in the
+  // same worker) can't push later cases into a spurious 429.
+  const { __resetRateLimit } = await import('@/app/api/codes/validate/route');
+  __resetRateLimit();
 });
 
 /**
