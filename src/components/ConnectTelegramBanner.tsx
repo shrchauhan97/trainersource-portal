@@ -1,4 +1,5 @@
 // Server component — queries trainer link status, renders widget when unlinked.
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { TelegramLoginWidget } from './TelegramLoginWidget';
@@ -8,12 +9,13 @@ export async function ConnectTelegramBanner() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user?.email) return null;
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) return null;
 
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle<{ id: string }>();
   if (!trainer) {
     // Logged-in user is an admin (or some other role) with no trainer row.
@@ -21,14 +23,14 @@ export async function ConnectTelegramBanner() {
     // what to do after the /iamtrainer magic-link lands them here.
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        You&apos;re logged in as <code>{user.email}</code>, which isn&apos;t a trainer
+        You&apos;re logged in as <code>{sessionEmail}</code>, which isn&apos;t a trainer
         account. The partner flow (<code>/mycode</code>,{' '}
         <code>/issuecode</code>, <code>/earnings</code>) is trainer-only.{' '}
         <span className="font-semibold">
           To preview it, sign out and sign back in with your <code>+trainer</code>
           {' '}alias
         </span>
-        {' '}(e.g. <code>{user.email.replace('@', '+trainer@')}</code>).
+        {' '}(e.g. <code>{sessionEmail.replace('@', '+trainer@')}</code>).
       </div>
     );
   }

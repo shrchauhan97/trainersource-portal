@@ -34,6 +34,16 @@ vi.mock('@/lib/supabase/service', () => ({
 const mockGetUserRole = vi.fn();
 vi.mock('@/lib/auth', () => ({
   getUserRole: (...args: unknown[]) => mockGetUserRole(...args),
+  // setPassword now normalizes the session email through this helper before
+  // gating on it (PR #47, T2.13). Mirror the real implementation so the email
+  // threaded into getUserRole / the password_set_at stamp is the canonical
+  // form — and so a null/whitespace session email still short-circuits to the
+  // auth_callback_failed redirect the security suite asserts.
+  normalizeSessionEmail: (email: string | null | undefined): string | null => {
+    if (!email) return null;
+    const trimmed = email.trim().toLowerCase();
+    return trimmed.length === 0 ? null : trimmed;
+  },
 }));
 
 class RedirectError extends Error {

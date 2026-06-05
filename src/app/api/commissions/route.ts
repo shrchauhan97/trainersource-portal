@@ -1,3 +1,4 @@
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { Admin, Trainer } from '@/lib/types';
 
@@ -22,13 +23,14 @@ async function getActor() {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (authError || !sessionEmail) {
     return { supabase, admin: null, trainer: null };
   }
 
   const [adminResult, trainerResult] = await Promise.all([
-    supabase.from('admins').select('*').eq('email', user.email).maybeSingle<Admin>(),
-    supabase.from('trainers').select('*').eq('email', user.email).maybeSingle<Trainer>(),
+    supabase.from('admins').select('*').eq('email', sessionEmail).maybeSingle<Admin>(),
+    supabase.from('trainers').select('*').eq('email', sessionEmail).maybeSingle<Trainer>(),
   ]);
 
   if (adminResult.error) {

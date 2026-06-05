@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { OnboardingStep } from '../_lib/types';
 
@@ -30,7 +31,8 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) {
     return { ok: false, error: 'You must be signed in to go live.' };
   }
 
@@ -40,7 +42,7 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
     .from('trainers')
     .select('id, status')
     .eq('id', trainerId)
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle();
 
   if (trainerLookupError || !trainer) {
