@@ -234,7 +234,15 @@ export async function POST(request: Request) {
       return json({ error: 'Invalid webhook payload' }, 400);
     }
 
-    if (!scope.includes('order/created')) {
+    const isOrderCreated = scope.includes('order/created');
+    // ACH / Paychron orders are frequently CREATED in a `pending` state and
+    // settle later, at which point BigCommerce fires order/updated or
+    // order/statusUpdated — NOT a second order/created. We previously ignored
+    // those scopes, so a pending order that later settled never produced a
+    // commission. Treat status-transition webhooks as a reconcile.
+    const isOrderUpdated =
+      scope.includes('order/statusUpdated') || scope.includes('order/updated');
+    if (!isOrderCreated && !isOrderUpdated) {
       return json({ ok: true });
     }
 
@@ -319,11 +327,20 @@ export async function POST(request: Request) {
     // permanently underpaying the trainer. Counting only settled prior orders
     // (paid / shipped / delivered) mirrors exactly the set that produced a
     // commission, so the first commissionable order is correctly first_sale.
+    //
+    // It must ALSO exclude the order being reconciled right now. On the ACH
+    // settle path this same order's row was already inserted (by order/created,
+    // or by an earlier order/updated) and may already be in a settled status by
+    // the time this webhook runs — so an unfiltered count would count the order
+    // against ITSELF, see 1 prior settled order, and flip its own first sale to
+    // a reorder (10%). Excluding its bigcommerce_order_id makes "is this the
+    // customer's first settled order" ask only about OTHER orders.
     const previousOrdersQuery = supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('customer_id', customer.id)
-      .in('status', ['paid', 'shipped', 'delivered']);
+      .in('status', ['paid', 'shipped', 'delivered'])
+      .neq('bigcommerce_order_id', String(orderId));
 
     const trainerQuery = trainerId
       ? supabase.from('trainers').select('*').eq('id', trainerId).maybeSingle<Trainer>()
@@ -384,8 +401,15 @@ export async function POST(request: Request) {
       commissionAmount = commission.amount;
     }
 
+    // order/created → first write (ingest). order/updated|statusUpdated →
+    // upsert the order + create the commission if it has now settled and none
+    // exists yet (reconcile). Both RPCs take the same argument shape and return
+    // the same (ok, was_new, reason, order_id, commission_id) row.
+    const rpcName = isOrderUpdated
+      ? 'reconcile_bc_order_and_commission'
+      : 'ingest_bc_order_and_commission';
     const { data: rpcRows, error: rpcError } = await supabase.rpc(
-      'ingest_bc_order_and_commission',
+      rpcName,
       {
         p_bigcommerce_order_id: String(orderId),
         p_customer_id: customer.id,
@@ -404,6 +428,18 @@ export async function POST(request: Request) {
     );
 
     if (rpcError) {
+      // The reconcile RPC ships in a migration a human applies to prod
+      // separately from this Vercel deploy. Until it exists, swallow the
+      // "undefined function" error and ACK 200 so BigCommerce does not
+      // retry-storm the endpoint. Any OTHER rpc error still surfaces as 500.
+      const isUndefinedFunction =
+        (rpcError as { code?: string }).code === '42883' ||
+        /reconcile_bc_order_and_commission/.test(
+          (rpcError as { message?: string }).message ?? '',
+        );
+      if (isOrderUpdated && isUndefinedFunction) {
+        return json({ ok: true, reconcile_pending: true });
+      }
       throw rpcError;
     }
 
@@ -417,7 +453,7 @@ export async function POST(request: Request) {
       // The whole txn rolled back — nothing to clean up. Surface 500 so BC
       // retries (with a fresh idempotent attempt).
       console.error(
-        `[webhook] ingest_bc_order_and_commission failed for order ${orderId}: ${rpcResult?.reason ?? 'no_result'}`,
+        `[webhook] ${rpcName} failed for order ${orderId}: ${rpcResult?.reason ?? 'no_result'}`,
       );
       return json({ error: 'ingest_failed', reason: rpcResult?.reason ?? null }, 500);
     }
