@@ -327,11 +327,20 @@ export async function POST(request: Request) {
     // permanently underpaying the trainer. Counting only settled prior orders
     // (paid / shipped / delivered) mirrors exactly the set that produced a
     // commission, so the first commissionable order is correctly first_sale.
+    //
+    // It must ALSO exclude the order being reconciled right now. On the ACH
+    // settle path this same order's row was already inserted (by order/created,
+    // or by an earlier order/updated) and may already be in a settled status by
+    // the time this webhook runs — so an unfiltered count would count the order
+    // against ITSELF, see 1 prior settled order, and flip its own first sale to
+    // a reorder (10%). Excluding its bigcommerce_order_id makes "is this the
+    // customer's first settled order" ask only about OTHER orders.
     const previousOrdersQuery = supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('customer_id', customer.id)
-      .in('status', ['paid', 'shipped', 'delivered']);
+      .in('status', ['paid', 'shipped', 'delivered'])
+      .neq('bigcommerce_order_id', String(orderId));
 
     const trainerQuery = trainerId
       ? supabase.from('trainers').select('*').eq('id', trainerId).maybeSingle<Trainer>()
