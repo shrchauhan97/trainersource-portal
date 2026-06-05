@@ -12,6 +12,7 @@ import {
   htmlEscape,
   newClientJoinedEmail,
   firstOrderEmail,
+  storefrontWelcomeEmail,
 } from '@/lib/email';
 
 describe('htmlEscape', () => {
@@ -224,5 +225,80 @@ describe('firstOrderEmail', () => {
     });
     expect(html).toContain('$1000.00');
     expect(html).toContain('$100.00');
+  });
+});
+
+// SHA-122: storefront customer welcome email — sent the first time we mint
+// a BC storefront account so the customer has a path to set a password
+// before the next visit. Locks the CTA contract (must point at the BC
+// storefront's reset-password page, NOT the trainer portal) and the
+// XSS-escape contract for both customerName and customerEmail.
+describe('storefrontWelcomeEmail', () => {
+  const safeInput = {
+    customerName: 'Jordan Lee',
+    customerEmail: 'jordan@example.com',
+  };
+
+  it('subject calls out password setup', () => {
+    const { subject } = storefrontWelcomeEmail(safeInput);
+    expect(subject).toBe(
+      'Your Ultimate Peptides account is ready — set your password',
+    );
+  });
+
+  it('greets by first name and surfaces the customer email', () => {
+    const { html } = storefrontWelcomeEmail(safeInput);
+    expect(html).toContain('Hey Jordan');
+    expect(html).toContain('<strong>jordan@example.com</strong>');
+  });
+
+  it('CTA points at the BC storefront reset-password page (NOT the trainer portal)', () => {
+    const { html } = storefrontWelcomeEmail(safeInput);
+    // Default storefront host (BC_STORE_URL env unset in test env).
+    expect(html).toContain(
+      'href="https://ultimate-peptides.com/login.php?action=reset_password"',
+    );
+    expect(html).toContain('Set my password');
+    // The trainer portal must NEVER show up here — the CTA leads the
+    // customer to BC's own account flow.
+    expect(html).not.toContain('trainer-source.com');
+  });
+
+  it('escapes <script> in customerName', () => {
+    const { html } = storefrontWelcomeEmail({
+      ...safeInput,
+      customerName: '<script>alert(1)</script> Lee',
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  it('escapes an attribute-break payload in customerEmail', () => {
+    const { html } = storefrontWelcomeEmail({
+      ...safeInput,
+      customerEmail: 'a@b.com"><img onerror=alert(1)>',
+    });
+    expect(html).not.toContain('<img onerror=alert(1)>');
+    expect(html).toContain('a@b.com&quot;&gt;&lt;img onerror=alert(1)&gt;');
+  });
+
+  it('honours BC_STORE_URL when set (strips trailing slash)', async () => {
+    const originalEnv = process.env.BC_STORE_URL;
+    try {
+      process.env.BC_STORE_URL = 'https://shop.example.com/';
+      // The template reads getBcStoreUrl() at call time, so a fresh call
+      // picks up the override without re-importing.
+      const { html } = storefrontWelcomeEmail(safeInput);
+      expect(html).toContain(
+        'href="https://shop.example.com/login.php?action=reset_password"',
+      );
+      expect(html).not.toContain('shop.example.com//login.php');
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.BC_STORE_URL;
+      } else {
+        process.env.BC_STORE_URL = originalEnv;
+      }
+    }
   });
 });

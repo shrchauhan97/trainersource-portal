@@ -4,7 +4,7 @@ import {
   getBigCommerceCustomerByEmail,
 } from '@/lib/bigcommerce';
 import { mintSessionToken } from '@/lib/session-token';
-import { sendEmail, newClientJoinedEmail } from '@/lib/email';
+import { sendEmail, newClientJoinedEmail, storefrontWelcomeEmail } from '@/lib/email';
 import type { Trainer } from '@/lib/types';
 
 // Best-effort trainer notification when their code is consumed. Never throws —
@@ -151,6 +151,23 @@ function splitCustomerName(name: string) {
   };
 }
 
+// Best-effort welcome email for a newly-minted BigCommerce storefront account.
+// SHA-122: we now create the BC customer with a random password +
+// force_password_reset=true so the account exists with a valid credential.
+// This mail gives the customer the storefront reset-password link so a
+// returning visit (cleared localStorage, switched device) doesn't dead-end.
+async function sendStorefrontWelcomeEmail(params: { email: string; name: string }) {
+  try {
+    const { subject, html } = storefrontWelcomeEmail({
+      customerName: params.name,
+      customerEmail: params.email,
+    });
+    await sendEmail({ to: params.email, subject, html });
+  } catch (err) {
+    console.error('[notify] storefront welcome email failed', err);
+  }
+}
+
 async function ensureBigCommerceCustomer(params: {
   supabase: ReturnType<typeof createServiceClient>;
   customerId: string;
@@ -164,24 +181,35 @@ async function ensureBigCommerceCustomer(params: {
 
   const existingBigCommerceCustomer = await getBigCommerceCustomerByEmail(params.email);
   const { firstName, lastName } = splitCustomerName(params.name);
-  const bigCommerceCustomer =
-    existingBigCommerceCustomer ??
-    (await createBigCommerceCustomer({
+
+  let bigCommerceCustomerId: number;
+  let createdNew = false;
+  if (existingBigCommerceCustomer) {
+    bigCommerceCustomerId = existingBigCommerceCustomer.id;
+  } else {
+    const created = await createBigCommerceCustomer({
       email: params.email,
       first_name: firstName,
       last_name: lastName,
-    }));
+    });
+    bigCommerceCustomerId = created.id;
+    createdNew = created.created;
+  }
 
   const { error: updateBigCommerceCustomerError } = await params.supabase
     .from('customers')
-    .update({ bigcommerce_customer_id: String(bigCommerceCustomer.id) })
+    .update({ bigcommerce_customer_id: String(bigCommerceCustomerId) })
     .eq('id', params.customerId);
 
   if (updateBigCommerceCustomerError) {
     throw updateBigCommerceCustomerError;
   }
 
-  return bigCommerceCustomer.id;
+  if (createdNew) {
+    await sendStorefrontWelcomeEmail({ email: params.email, name: params.name });
+  }
+
+  return bigCommerceCustomerId;
 }
 
 function corsHeaders(origin: string | null) {

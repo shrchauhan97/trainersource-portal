@@ -23,12 +23,15 @@ vi.mock('@/lib/supabase/service', () => ({
 
 vi.mock('@/lib/bigcommerce', () => ({
   getBigCommerceCustomerByEmail: vi.fn().mockResolvedValue(null),
-  createBigCommerceCustomer: vi.fn().mockResolvedValue({ id: 99 }),
+  createBigCommerceCustomer: vi.fn().mockResolvedValue({ id: 99, created: true }),
 }));
 
 vi.mock('@/lib/email', () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
   newClientJoinedEmail: vi.fn().mockReturnValue({ subject: 's', html: '<p/>' }),
+  storefrontWelcomeEmail: vi
+    .fn()
+    .mockReturnValue({ subject: 'welcome', html: '<p/>' }),
 }));
 
 vi.mock('@/lib/session-token', () => ({
@@ -260,6 +263,217 @@ describe('POST /api/codes/validate', () => {
       access_code_id: 'ac-9',
       trainer_id: 'trn-9',
     });
+  });
+
+  // SHA-122: when BC mints a new storefront account we now send a welcome
+  // email with a reset-password CTA, so a returning customer who clears
+  // localStorage doesn't dead-end at the BC login form. The welcome MUST
+  // only fire on a fresh insert — not when the customer already exists in
+  // BC (typical "user re-enters a code" or 422 dedupe race).
+  it('sends the storefront welcome email on a freshly minted BC customer', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          reason: null,
+          access_code_id: 'ac-122',
+          customer_id: 'cust-122',
+          trainer_id: 'trn-122',
+        },
+      ],
+      error: null,
+    });
+    setupFromHandlers({
+      customers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: { bigcommerce_customer_id: null },
+                error: null,
+              }),
+          }),
+        }),
+        update: () => ({
+          eq: () => Promise.resolve({ error: null }),
+        }),
+      }),
+      trainers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      }),
+      code_attempts: () => ({
+        insert: () => Promise.resolve({ error: null }),
+      }),
+    });
+
+    const bigcommerceMod = await import('@/lib/bigcommerce');
+    const emailMod = await import('@/lib/email');
+    (
+      bigcommerceMod.createBigCommerceCustomer as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({ id: 7777, created: true });
+    (
+      bigcommerceMod.getBigCommerceCustomerByEmail as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(null);
+    const welcomeMock = emailMod.storefrontWelcomeEmail as ReturnType<typeof vi.fn>;
+    const callsBefore = welcomeMock.mock.calls.length;
+
+    const { POST } = await import('@/app/api/codes/validate/route');
+    const res = await POST(
+      buildRequest({
+        code: 'WELCOME-001',
+        email: 'New.Customer@Example.com',
+        name: 'New Customer',
+        country: 'Singapore',
+        city: 'Singapore',
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(welcomeMock.mock.calls.length).toBeGreaterThan(callsBefore);
+    const lastCall = welcomeMock.mock.calls[welcomeMock.mock.calls.length - 1];
+    // Email is normalised to lower-case before reaching the email helper
+    // (matches the trainers/admins/customers row contract).
+    expect(lastCall?.[0]).toEqual({
+      customerName: 'New Customer',
+      customerEmail: 'new.customer@example.com',
+    });
+  });
+
+  it('does NOT send the storefront welcome email when BC already had the customer', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          reason: null,
+          access_code_id: 'ac-122b',
+          customer_id: 'cust-122b',
+          trainer_id: 'trn-122b',
+        },
+      ],
+      error: null,
+    });
+    setupFromHandlers({
+      customers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: { bigcommerce_customer_id: null },
+                error: null,
+              }),
+          }),
+        }),
+        update: () => ({
+          eq: () => Promise.resolve({ error: null }),
+        }),
+      }),
+      trainers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      }),
+      code_attempts: () => ({
+        insert: () => Promise.resolve({ error: null }),
+      }),
+    });
+
+    const bigcommerceMod = await import('@/lib/bigcommerce');
+    const emailMod = await import('@/lib/email');
+    // Existing BC customer surfaces via the email lookup — never reaches
+    // createBigCommerceCustomer, no welcome email.
+    (
+      bigcommerceMod.getBigCommerceCustomerByEmail as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({ id: 8888 });
+    const welcomeMock = emailMod.storefrontWelcomeEmail as ReturnType<typeof vi.fn>;
+    const callsBefore = welcomeMock.mock.calls.length;
+
+    const { POST } = await import('@/app/api/codes/validate/route');
+    const res = await POST(
+      buildRequest({
+        code: 'RETURNING-002',
+        email: 'returning@example.com',
+        name: 'Returning Customer',
+        country: 'Singapore',
+        city: 'Singapore',
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(welcomeMock.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('does NOT send the storefront welcome email when the customer already has a bigcommerce_customer_id mapped', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          reason: null,
+          access_code_id: 'ac-122c',
+          customer_id: 'cust-122c',
+          trainer_id: 'trn-122c',
+        },
+      ],
+      error: null,
+    });
+    setupFromHandlers({
+      customers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: { bigcommerce_customer_id: '4242' },
+                error: null,
+              }),
+          }),
+        }),
+        update: () => ({
+          eq: () => Promise.resolve({ error: null }),
+        }),
+      }),
+      trainers: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      }),
+      code_attempts: () => ({
+        insert: () => Promise.resolve({ error: null }),
+      }),
+    });
+
+    const bigcommerceMod = await import('@/lib/bigcommerce');
+    const emailMod = await import('@/lib/email');
+    const createMock = bigcommerceMod.createBigCommerceCustomer as ReturnType<
+      typeof vi.fn
+    >;
+    const welcomeMock = emailMod.storefrontWelcomeEmail as ReturnType<typeof vi.fn>;
+    const createCallsBefore = createMock.mock.calls.length;
+    const welcomeCallsBefore = welcomeMock.mock.calls.length;
+
+    const { POST } = await import('@/app/api/codes/validate/route');
+    const res = await POST(
+      buildRequest({
+        code: 'ALREADY-MAPPED-003',
+        email: 'mapped@example.com',
+        name: 'Mapped Customer',
+        country: 'Singapore',
+        city: 'Singapore',
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(createMock.mock.calls.length).toBe(createCallsBefore);
+    expect(welcomeMock.mock.calls.length).toBe(welcomeCallsBefore);
   });
 
   it('treats an RPC supabase error as server_error and still records the attempt', async () => {
