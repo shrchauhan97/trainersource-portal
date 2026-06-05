@@ -21,10 +21,14 @@ export async function getCurrentUser(): Promise<User | null> {
 /**
  * Normalize an email captured from a Supabase auth session for use as a
  * primary-key lookup against `trainers.email` / `admins.email`. Both tables
- * persist emails in lower-case (see `admin/actions.ts:createTrainer/updateTrainer`,
- * `login/actions.ts`, the `apply` form) but the user object returned by
- * `supabase.auth.getUser()` echoes back whatever the user originally typed
- * into the magic-link / password form — including mixed-case variants. A raw
+ * are guaranteed to persist emails in lower-case + trimmed form by the
+ * `trainers_email_lowercase_check` / `admins_email_lowercase_check` CHECK
+ * constraints (`CHECK (email = lower(trim(email)))`, added in migration
+ * `supabase/migrations/2026-06-02-trainers-admins-email-lowercase-check.sql`)
+ * — Postgres rejects any write that would store a mixed-case or padded
+ * address. The user object returned by `supabase.auth.getUser()`, however,
+ * echoes back whatever the user originally typed into the magic-link /
+ * password form — including mixed-case variants. A raw
  * `.eq('email', user.email)` therefore silently fails to match the canonical
  * row whenever the session email isn't already lower-case, and the trainer/
  * admin lands on the wrong branch (redirect to /apply, "Unauthorized", etc.).
