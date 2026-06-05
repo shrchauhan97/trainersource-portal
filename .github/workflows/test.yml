@@ -23,8 +23,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
 
+      # No `cache: pnpm` — the repo's pnpm-workspace.yaml is config-only
+      # (ignoredBuiltDependencies, no `packages:`), which makes setup-node's
+      # `pnpm store path` cache probe error "packages field missing or empty".
       - name: Install
         run: pnpm install --frozen-lockfile
 
