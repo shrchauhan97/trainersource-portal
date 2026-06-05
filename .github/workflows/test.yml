@@ -1,0 +1,38 @@
+name: test
+
+# Runs typecheck + lint + the vitest suite on every PR and push to main.
+# Added 2026-06-05: the portal previously had NO test CI — only the Vercel
+# build ran, so the vitest suite never gated merges. See
+# peptides-ops:docs/nightly-sweep-hardening.md (failure mode #3).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
