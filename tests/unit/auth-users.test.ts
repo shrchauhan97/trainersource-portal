@@ -10,7 +10,7 @@ const service = {
       createUser: mockCreateUser,
     },
   },
-} as Parameters<typeof ensureAuthUserForEmail>[0];
+} as any as Parameters<typeof ensureAuthUserForEmail>[0];
 
 beforeEach(() => {
   vi.clearAllMocks();
