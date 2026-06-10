@@ -1,3 +1,4 @@
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { Admin, Trainer, TrainerStatus } from '@/lib/types';
 
@@ -17,14 +18,15 @@ async function requireAdmin() {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (authError || !sessionEmail) {
     return { supabase, admin: null };
   }
 
   const { data: admin, error: adminError } = await supabase
     .from('admins')
     .select('*')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle<Admin>();
 
   if (adminError) {

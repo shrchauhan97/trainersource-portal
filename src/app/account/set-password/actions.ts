@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 
-import { getUserRole } from '@/lib/auth';
+import { getUserRole, normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 
@@ -29,7 +29,8 @@ export async function setPassword(formData: FormData): Promise<SetPasswordResult
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-  if (userError || !user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (userError || !user || !sessionEmail) {
     console.error('[set-password] getUser failed or missing email', {
       hasUser: Boolean(user),
       hasEmail: Boolean(user?.email),
@@ -40,9 +41,9 @@ export async function setPassword(formData: FormData): Promise<SetPasswordResult
 
   let role: Awaited<ReturnType<typeof getUserRole>>;
   try {
-    role = await getUserRole(user.email);
+    role = await getUserRole(sessionEmail);
   } catch (err) {
-    console.error('[set-password] getUserRole failed', { email: user.email, err });
+    console.error('[set-password] getUserRole failed', { email: sessionEmail, err });
     redirect('/login?error=auth_callback_failed');
   }
 
@@ -70,14 +71,14 @@ export async function setPassword(formData: FormData): Promise<SetPasswordResult
   const { error: stampError } = await service
     .from(table)
     .update({ password_set_at: new Date().toISOString() })
-    .eq('email', user.email);
+    .eq('email', sessionEmail);
   if (stampError) {
     // Non-fatal: the auth.users update already succeeded, the user can sign
     // in with their password right now. The only downside is they'll be
     // prompted to set-password again on next sign-in. Log loud so we notice.
     console.error('[set-password] failed to stamp password_set_at', {
       table,
-      email: user.email,
+      email: sessionEmail,
       message: stampError.message,
     });
   }

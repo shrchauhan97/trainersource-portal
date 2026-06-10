@@ -18,9 +18,13 @@ DO $$ BEGIN CREATE TYPE commission_status AS ENUM ('pending', 'approved', 'paid'
 DO $$ BEGIN CREATE TYPE commission_type AS ENUM ('first_sale', 'reorder'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Admins (Tim & Matt are superadmins in prod; demo seeds one admin)
+-- `*_email_lowercase_check`: persisted emails MUST be lowercase + trimmed.
+-- Mirrors the session-side `normalizeSessionEmail` contract (PR #47) on the
+-- write side so a mixed-case insert can't silently break later `.eq('email', …)`
+-- lookups. Backed by migration 2026-06-02-trainers-admins-email-lowercase-check.
 CREATE TABLE IF NOT EXISTS admins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL CHECK (email = lower(trim(email))),
     name TEXT NOT NULL,
     role admin_role NOT NULL DEFAULT 'admin',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -30,7 +34,7 @@ CREATE TABLE IF NOT EXISTS admins (
 CREATE TABLE IF NOT EXISTS trainers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL CHECK (email = lower(trim(email))),
     phone TEXT,
     country TEXT NOT NULL,
     city TEXT NOT NULL,
@@ -169,10 +173,18 @@ create table if not exists public.kb_chunks (
   embedding        vector(768) not null,
   ingested_at      timestamptz not null default now(),
   content_hash     text not null unique,
+  -- Source-of-record publication date for the underlying document (not
+  -- the ingest run). Surfaced inline in the system prompt by the bot's
+  -- formatChunksForPrompt() so the LLM can frame evidence by recency.
+  -- Nullable because some source types (ts_manual, l30d) have no
+  -- per-document date; threaded through chunkers as of 2026-05-30.
+  published_at     timestamptz,
   constraint kb_chunks_mode_check check (mode in ('all', 'partner_only', 'customer_only')),
   constraint kb_chunks_source_type_check check (
     source_type in ('matt_kb', 'yt_huberman', 'yt_smashrx', 'yt_creator',
-                    'yt_howto', 'pubmed', 'l30d', 'ts_manual')
+                    'yt_howto', 'pubmed', 'l30d', 'ts_manual',
+                    'forum_excelmale', 'forum_thinksteroids', 'forum_longecity',
+                    'forum_reddit')
   )
 );
 

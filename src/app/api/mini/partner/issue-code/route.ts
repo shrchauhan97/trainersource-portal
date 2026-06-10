@@ -64,6 +64,44 @@ export async function POST(request: Request) {
   }
 
   const trainerId = (link as { trainer_id: string }).trainer_id;
+
+  // Authorization: only ACTIVE trainers may mint codes. The web route
+  // (api/codes/generate) and the bot-secret route (via requireBotSecret) both
+  // enforce this; the Mini App path must too. suspendTrainer/removeTrainer flip
+  // trainers.status but do NOT delete the trainer_telegram_links row, so the
+  // link stays live — without this check a suspended/removed trainer keeps
+  // minting attribution codes through the Mini App.
+  const { data: trainer, error: trainerErr } = await supabase
+    .from('trainers')
+    .select('status, max_clients')
+    .eq('id', trainerId)
+    .maybeSingle<{ status: string; max_clients: number }>();
+
+  if (trainerErr) {
+    console.error('[mini/partner/issue-code] trainer lookup failed:', trainerErr);
+    return NextResponse.json({ error: 'lookup_failed' }, { status: 500 });
+  }
+  if (!trainer) {
+    return NextResponse.json({ error: 'trainer_not_found' }, { status: 404 });
+  }
+  if (trainer.status !== 'active') {
+    return NextResponse.json({ error: 'not_active' }, { status: 403 });
+  }
+
+  // Enforce the per-trainer client cap, matching api/codes/generate.
+  const { count, error: countErr } = await supabase
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .eq('trainer_id', trainerId);
+
+  if (countErr) {
+    console.error('[mini/partner/issue-code] client count failed:', countErr);
+    return NextResponse.json({ error: 'lookup_failed' }, { status: 500 });
+  }
+  if ((count ?? 0) >= trainer.max_clients) {
+    return NextResponse.json({ error: 'max_clients_reached' }, { status: 403 });
+  }
+
   const outcome = await issueTrainerCode(supabase, trainerId, body.label ?? '');
 
   if (!outcome.ok) {

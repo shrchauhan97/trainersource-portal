@@ -77,7 +77,7 @@ try {
   await testToggle.scrollIntoViewIfNeeded();
   await shot(step++, "test-toggle-visible");
   // Find the checkbox/toggle near this text
-  const toggleHandle = page.locator('input[type="checkbox"]').filter({ has: page.getByText(/test/i) }).first();
+  const _toggleHandle = page.locator('input[type="checkbox"]').filter({ has: page.getByText(/test/i) }).first();
   const checkboxes = await page.locator('input[type="checkbox"]').elementHandles();
   let flipped = false;
   for (const cb of checkboxes) {
@@ -128,7 +128,7 @@ try {
   await shot(step++, "sgd-bank-deposit-tab");
 
   // Fill Display Name
-  const displayName = page.locator('input').filter({ hasText: "" }).first();
+  const _displayName = page.locator('input').filter({ hasText: "" }).first();
   // Better selector
   const displayInput = page.locator('input[type="text"]').first();
   await displayInput.fill("Bank Transfer (SG PayNow or International Wire)");

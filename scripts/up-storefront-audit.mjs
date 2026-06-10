@@ -58,7 +58,7 @@ for (const vp of viewports) {
       window.localStorage.setItem("up_customer_id", String(cid));
       window.localStorage.setItem("up_session_token", String(tok));
       window.localStorage.setItem("up_customer_email", String(em));
-    } catch (e) {}
+    } catch {}
   }, { cid: session.customer_id, tok: session.session_token, em: email });
 
   for (const p of pages) {
@@ -107,7 +107,7 @@ for (const vp of viewports) {
 
     const key = `${vp.name}-${p.name}`;
     findings[key] = { path: p.path, status, loadMs, errs: errs.slice(0, 8), warnCount: warns.length, failedRequests: failedRequests.slice(0, 5), ...audit };
-    const issueCount = errs.length + audit.brokenImgCount + (audit.gateVisible ? 1 : 0) + (audit.hasH1 !== 1 ? 1 : 0) + (audit.powerpep ? 1 : 0);
+    const _issueCount = errs.length + audit.brokenImgCount + (audit.gateVisible ? 1 : 0) + (audit.hasH1 !== 1 ? 1 : 0) + (audit.powerpep ? 1 : 0);
     console.log(`[${vp.name}] ${p.path.padEnd(30)} ${status} ${loadMs}ms  errs:${errs.length} brokenImg:${audit.brokenImgCount} h1s:${audit.hasH1} gate:${audit.gateVisible} powerpep:${audit.powerpep}`);
   }
   await ctx.close();

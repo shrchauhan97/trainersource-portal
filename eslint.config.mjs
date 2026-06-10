@@ -12,7 +12,25 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Nested git worktrees (git-ignored) are physical duplicates of source
+    // under .worktrees/; linting them double-reports issues that belong to
+    // whatever branch is checked out there, not to this tree.
+    ".worktrees/**",
   ]),
+  // Allow intentionally-unused bindings when prefixed with `_` (reducer
+  // signatures, destructured-but-ignored values, swallowed catch errors).
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -67,9 +67,15 @@ export default function RootLayout({
       className={`${inter.variable} ${plusJakartaSans.variable} h-full antialiased`}
     >
       <head>
+        {/* Material Symbols is an icon font, not body text — display=block
+            avoids a flash of ligature names before it loads. The root layout
+            <head> is the correct place for it in the App Router, so the two
+            next/font page-font lints (tuned for next/font text fonts) don't
+            apply here. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font, @next/next/google-font-display */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
         />
       </head>
       <body className="min-h-full flex flex-col font-body">

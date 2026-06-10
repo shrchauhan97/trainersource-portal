@@ -1,0 +1,44 @@
+name: test
+
+# Runs typecheck + lint + the vitest suite on every PR and push to main.
+# Added 2026-06-05: the portal previously had NO test CI — only the Vercel
+# build ran, so the vitest suite never gated merges. See
+# peptides-ops:docs/nightly-sweep-hardening.md (failure mode #3).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No `cache: pnpm` — the repo's pnpm-workspace.yaml is config-only
+      # (ignoredBuiltDependencies, no `packages:`), which makes setup-node's
+      # `pnpm store path` cache probe error "packages field missing or empty".
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Runs the unit/api/lib/mini suites (no secrets needed). The
+      # tests/integration/** suites require a real SUPABASE_URL and throw
+      # without it — they belong in a separate secrets-injected nightly job
+      # (see peptides-ops:docs/nightly-sweep-hardening.md).
+      - name: Test
+        run: pnpm exec vitest run tests/unit tests/lib tests/api tests/mini

@@ -95,6 +95,6 @@ async function createRedirects(siteId, items) {
     console.log('\nNothing to do.');
     return;
   }
-  const res = await createRedirects(siteId, toCreate);
+  const _res = await createRedirects(siteId, toCreate);
   if (APPLY) console.log(`\nCreated ${toCreate.length} redirects. Old URLs now 301 -> current category URLs.`);
 })().catch((err) => { console.error('FAILED:', err.message); process.exit(1); });

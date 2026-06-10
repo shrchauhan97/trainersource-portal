@@ -156,6 +156,7 @@ describeBigCommerceLive('BigCommerce live API integration', () => {
     });
 
     expect(typeof customer.id).toBe('number');
+    expect(customer.created).toBe(true);
     createdBigCommerceCustomerIds.push(customer.id);
   });
 
@@ -169,6 +170,7 @@ describeBigCommerceLive('BigCommerce live API integration', () => {
     });
 
     createdBigCommerceCustomerIds.push(createdCustomer.id);
+    expect(createdCustomer.created).toBe(true);
 
     const customer = await getBigCommerceCustomerByEmail(email);
 
@@ -188,6 +190,12 @@ describeBigCommerceLive('BigCommerce live API integration', () => {
 
     createdBigCommerceCustomerIds.push(firstCustomer.id);
 
-    await expect(createBigCommerceCustomer(input)).resolves.toEqual({ id: firstCustomer.id });
+    // SHA-122: createBigCommerceCustomer now returns {id, created} so the
+    // validate route can decide whether to send the storefront welcome
+    // email. The 422 duplicate-fallback path returns created:false.
+    await expect(createBigCommerceCustomer(input)).resolves.toEqual({
+      id: firstCustomer.id,
+      created: false,
+    });
   });
 });

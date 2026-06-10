@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { getCurrentAdminEmail } from '@/lib/auth';
+import { getCurrentAdminEmail, normalizeSessionEmail } from '@/lib/auth';
 import { deleteBcCustomer } from '@/lib/bc-rest-client';
 import {
   sendEmail,
@@ -42,11 +42,11 @@ async function requireAdmin() {
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user?.email) {
+  const email = normalizeSessionEmail(user?.email);
+  if (userError || !email) {
     redirect('/login');
   }
 
-  const email = user.email.trim().toLowerCase();
   const { data: admin, error: adminError } = await supabase
     .from('admins')
     .select('id, role')

@@ -29,9 +29,9 @@ export function UnderReviewScreen() {
         </h2>
 
         <p className="mt-5 text-base leading-7 text-[#2D4F67]/80 sm:text-lg">
-          You've completed all onboarding steps. Our team is reviewing your
-          application and you'll receive a confirmation email once
-          you're approved and activated.
+          You&apos;ve completed all onboarding steps. Our team is reviewing your
+          application and you&apos;ll receive a confirmation email once
+          you&apos;re approved and activated.
         </p>
 
         <p className="mt-4 text-sm leading-6 text-[#2D4F67]/60">
