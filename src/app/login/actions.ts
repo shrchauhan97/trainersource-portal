@@ -3,7 +3,9 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import { ensureAuthUserForEmail } from '@/lib/auth-users';
 import { getUserRole } from '@/lib/auth';
+import { getSiteUrl, magicLinkLoginEmail, sendEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 
@@ -17,6 +19,19 @@ export type CheckEmailResult =
 export type SignInResult =
   | { ok: true; next: string }
   | { ok: false; reason: 'invalid_credentials' | 'not_authorized' | 'suspended' | 'server_error' };
+
+export type SendMagicLinkResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | 'not_authorized'
+        | 'suspended'
+        | 'rate_limited'
+        | 'invalid'
+        | 'server_error'
+        | 'send_failed';
+    };
 
 // Per-instance, per-bucket-prefix token bucket. Reset every WINDOW_MS.
 // Buckets are keyed `<prefix>:<ip>` so the email-check and password-
@@ -61,7 +76,9 @@ async function clientIp(): Promise<string | null> {
 // x-forwarded-for must not silently disable the throttle. On Vercel
 // the header is always set; an unknown-IP request is therefore a
 // configuration smell worth logging the first time we see it.
-async function rateLimitOrReject(bucketPrefix: 'email' | 'signin'): Promise<boolean> {
+async function rateLimitOrReject(
+  bucketPrefix: 'email' | 'signin' | 'magic',
+): Promise<boolean> {
   const ip = await clientIp();
   if (!ip) {
     if (!unknownIpWarned) {
@@ -73,16 +90,9 @@ async function rateLimitOrReject(bucketPrefix: 'email' | 'signin'): Promise<bool
   return rateLimit(`${bucketPrefix}:${ip}`);
 }
 
-export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailResult> {
-  const email = (rawEmail || '').trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { allowed: false, reason: 'invalid' };
-  }
-
-  if (!(await rateLimitOrReject('email'))) {
-    return { allowed: false, reason: 'rate_limited' };
-  }
-
+async function resolveEmailAccess(
+  email: string,
+): Promise<CheckEmailResult> {
   const supabase = createServiceClient();
 
   const { data: admin, error: adminError } = await supabase
@@ -92,7 +102,11 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
     .maybeSingle();
 
   if (adminError) {
-    console.error('[checkEmailAllowed] admins lookup failed', { email, code: adminError.code, message: adminError.message });
+    console.error('[login/actions] admins lookup failed', {
+      email,
+      code: adminError.code,
+      message: adminError.message,
+    });
     return { allowed: false, reason: 'server_error' };
   }
 
@@ -104,7 +118,7 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
       .maybeSingle();
 
     if (trainerError) {
-      console.error('[checkEmailAllowed] trainers lookup failed', {
+      console.error('[login/actions] trainers lookup failed', {
         email,
         code: trainerError.code,
         message: trainerError.message,
@@ -126,7 +140,7 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
     addr: email,
   });
   if (rpcError) {
-    console.error('[checkEmailAllowed] user_has_password_by_email rpc failed', {
+    console.error('[login/actions] user_has_password_by_email rpc failed', {
       email,
       code: rpcError.code,
       message: rpcError.message,
@@ -135,6 +149,92 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
   }
 
   return { allowed: true, hasPassword: hasPwd === true };
+}
+
+export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailResult> {
+  const email = (rawEmail || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { allowed: false, reason: 'invalid' };
+  }
+
+  if (!(await rateLimitOrReject('email'))) {
+    return { allowed: false, reason: 'rate_limited' };
+  }
+
+  return resolveEmailAccess(email);
+}
+
+function buildMagicLinkCallbackUrl(tokenHash: string, intent?: 'reset'): string {
+  const url = new URL('/auth/callback', getSiteUrl());
+  url.searchParams.set('token_hash', tokenHash);
+  url.searchParams.set('type', 'magiclink');
+  if (intent === 'reset') {
+    url.searchParams.set('intent', 'reset');
+  }
+  return url.toString();
+}
+
+export async function sendMagicLinkAction(
+  rawEmail: string,
+  intent?: 'reset',
+): Promise<SendMagicLinkResult> {
+  const email = (rawEmail || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  if (!(await rateLimitOrReject('magic'))) {
+    return { ok: false, reason: 'rate_limited' };
+  }
+
+  const access = await resolveEmailAccess(email);
+  if (!access.allowed) {
+    return { ok: false, reason: access.reason };
+  }
+
+  const service = createServiceClient();
+  const ensured = await ensureAuthUserForEmail(service, email);
+  if (!ensured.ok) {
+    return { ok: false, reason: 'server_error' };
+  }
+
+  const redirectTo = new URL('/auth/callback', getSiteUrl());
+  if (intent === 'reset') {
+    redirectTo.searchParams.set('intent', 'reset');
+  }
+
+  const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+    options: { redirectTo: redirectTo.toString() },
+  });
+
+  const tokenHash = linkData?.properties?.hashed_token;
+  if (linkError || !tokenHash) {
+    console.error('[sendMagicLinkAction] generateLink failed', {
+      email,
+      code: linkError?.code,
+      message: linkError?.message,
+    });
+    return { ok: false, reason: 'server_error' };
+  }
+
+  const signInUrl = buildMagicLinkCallbackUrl(tokenHash, intent);
+  const { subject, html } = magicLinkLoginEmail({ signInUrl, isReset: intent === 'reset' });
+  const sendResult = await sendEmail({ to: email, subject, html });
+
+  if (!sendResult.ok) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[sendMagicLinkAction] email send failed — dev sign-in URL:', signInUrl);
+    }
+    console.error('[sendMagicLinkAction] sendEmail failed', {
+      email,
+      error: sendResult.error,
+    });
+    return { ok: false, reason: 'send_failed' };
+  }
+
+  return { ok: true };
 }
 
 export async function signInWithPasswordAction(

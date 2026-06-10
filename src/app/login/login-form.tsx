@@ -3,9 +3,13 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
-import { createClient } from '@/lib/supabase/client';
-
-import { checkEmailAllowed, signInRedirect, type CheckEmailResult } from './actions';
+import {
+  checkEmailAllowed,
+  sendMagicLinkAction,
+  signInRedirect,
+  type CheckEmailResult,
+  type SendMagicLinkResult,
+} from './actions';
 
 const callbackErrorMessages: Record<string, string> = {
   auth_callback_failed: 'The confirmation link didn\'t work. This can happen if you clicked it in a different browser profile. Try requesting a new magic link from the same browser where you signed up.',
@@ -22,6 +26,18 @@ const checkErrorMessages: Record<
   rate_limited: 'Too many attempts. Please wait a minute and try again.',
   invalid: 'Enter a valid email address.',
   server_error: 'Something went wrong. Please try again in a moment.',
+};
+
+const magicLinkErrorMessages: Record<
+  NonNullable<Exclude<SendMagicLinkResult, { ok: true }>['reason']>,
+  string
+> = {
+  not_authorized: 'Your email is not authorized to access TrainerSource.',
+  suspended: 'Your account has been suspended. Contact support to restore access.',
+  rate_limited: 'Too many attempts. Please wait a minute and try again.',
+  invalid: 'Enter a valid email address.',
+  server_error: 'Something went wrong. Please try again in a moment.',
+  send_failed: "We couldn't send the magic link. Please try again in a moment.",
 };
 
 type Step = 'email' | 'password';
@@ -84,24 +100,16 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
     setIsSubmitting(true);
     resetMessages();
     try {
-      const supabase = createClient();
-      const params = new URLSearchParams();
-      if (intent) params.set('intent', intent);
-      const emailRedirectTo = `${window.location.origin}/auth/callback${params.size ? `?${params}` : ''}`;
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: addr,
-        options: { emailRedirectTo },
-      });
-      if (otpError) {
-        console.error('[login] signInWithOtp failed', otpError);
-        setError("We couldn't send the magic link. Please try again in a moment.");
+      const result = await sendMagicLinkAction(addr, intent);
+      if (!result.ok) {
+        setError(magicLinkErrorMessages[result.reason]);
         return;
       }
       setMagicSent(true);
       setInfo(
         intent === 'reset'
           ? 'Check your email for a link to reset your password.'
-          : 'Check your email for a link to finish signing in.'
+          : 'Check your email for a link to finish signing in.',
       );
     } finally {
       setIsSubmitting(false);
@@ -149,7 +157,7 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
               ? 'Enter the email connected to your admin or trainer account.'
               : hasPassword
                 ? `Signing in as ${email}.`
-                : `We've sent a magic link to ${email}. Open it on this device to finish setting up your account.`}
+                : `We've sent a magic link to ${email}. Open it to finish setting up your account.`}
           </p>
         </div>
 
@@ -244,7 +252,7 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
                 <button
                   type="button"
                   onClick={() => sendMagicLink(email)}
-                  disabled={isSubmitting || magicSent}
+                  disabled={isSubmitting}
                   className="inline-flex w-full items-center justify-center rounded-2xl border border-clinical-slate/15 px-4 py-3 font-semibold text-clinical-slate transition hover:border-hyrox-orange hover:text-hyrox-orange disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isSubmitting ? 'Sending…' : magicSent ? 'Resend magic link' : 'Send magic link'}
@@ -254,10 +262,6 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
             <button
               type="button"
               onClick={(e) => {
-                // type=button alone should be enough to prevent the parent
-                // <form onSubmit={handlePasswordSubmit}> from firing, but the
-                // 2026-05-17 prod verification observed clicks that didn't
-                // visibly reset the form. Belt-and-suspenders.
                 e.preventDefault();
                 e.stopPropagation();
                 setStep('email');
