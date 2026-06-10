@@ -8,7 +8,6 @@ const mockGetUser = vi.fn();
 const mockSignOut = vi.fn();
 const mockRpc = vi.fn();
 const mockTrainerMaybeSingle = vi.fn();
-let mockTrainerStatus: string | null;
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() =>

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { CreateTrainerDropdown } from '@/components/admin/CreateTrainerDropdown';
-import { changeTrainerStatus, createTrainer } from '@/app/admin/actions';
+import { changeTrainerStatus } from '@/app/admin/actions';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { SubmitButton } from '@/components/admin/SubmitButton';
 import { StatusBadge } from '@/components/admin/StatusBadge';
