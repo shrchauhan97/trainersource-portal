@@ -52,7 +52,6 @@ async function getLocation(res: Response): Promise<string | null> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockTrainerStatus = 'active';
   mockExchange.mockResolvedValue({ error: null });
   mockVerifyOtp.mockResolvedValue({ error: null });
   mockGetUser.mockResolvedValue({
