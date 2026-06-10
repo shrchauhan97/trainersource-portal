@@ -6,10 +6,10 @@ const ctx = await browser.newContext();
 const page = await ctx.newPage();
 
 let capturedBody = null;
-let capturedHeaders = null;
+let _capturedHeaders = null;
 await page.route("**/auth/v1/otp**", async (route, req) => {
   capturedBody = req.postData();
-  capturedHeaders = req.headers();
+  _capturedHeaders = req.headers();
   await route.continue();
 });
 

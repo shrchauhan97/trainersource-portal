@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 type BigCommerceCustomerInput = {
   email: string;
   first_name: string;
@@ -9,6 +11,26 @@ type BigCommerceCustomerInput = {
 type BigCommerceCustomerRecord = {
   id: number;
   email?: string;
+};
+
+// Pulled out of the customer-create payload so the test suite can pin its
+// shape without retrying the random output. The BC password policy is
+// configurable per store, but the BC defaults require length>=7 with at
+// least one upper, one lower, and one digit. The random base64url chunk
+// almost always satisfies that, and the `A1!` suffix guarantees it even
+// if the operator tightened the policy to require a symbol.
+export function generateBigCommercePassword(): string {
+  return `${randomBytes(24).toString('base64url')}A1!`;
+}
+
+export type CreateBigCommerceCustomerResult = {
+  id: number;
+  // `true` when this call actually inserted the customer; `false` when a
+  // 422 duplicate-email response forced us to fall back to the existing
+  // record (race with a concurrent request). The validate route uses this
+  // to decide whether to send the storefront welcome email — we only want
+  // to send it on the first-ever account creation.
+  created: boolean;
 };
 
 type BigCommerceListResponse<T> = {
@@ -106,7 +128,7 @@ export async function getBigCommerceCustomerByEmail(
 
 export async function createBigCommerceCustomer(
   params: BigCommerceCustomerInput,
-): Promise<{ id: number }> {
+): Promise<CreateBigCommerceCustomerResult> {
   try {
     const response = await bigCommerceFetch<BigCommerceListResponse<BigCommerceCustomerRecord>>(
       '/customers',
@@ -119,6 +141,21 @@ export async function createBigCommerceCustomer(
             last_name: params.last_name.trim(),
             ...(params.company ? { company: params.company.trim() } : {}),
             ...(params.phone ? { phone: params.phone.trim() } : {}),
+            // SHA-122: BC v3 customer-create previously omitted the
+            // authentication block, so the row landed with no password and
+            // no BC-side welcome/reset email. A returning customer who
+            // cleared localStorage (or switched device) then hit the
+            // storefront login form with nothing to type. We now mint a
+            // strong random password and flip `force_password_reset`, so
+            // the account exists with valid credentials AND BC will
+            // require a customer-driven reset on first form login. The
+            // welcome email shipped by the validate route gives the
+            // customer the reset link directly so they never see a
+            // dead-end "wrong password" screen.
+            authentication: {
+              force_password_reset: true,
+              new_password: generateBigCommercePassword(),
+            },
           },
         ]),
       },
@@ -130,13 +167,13 @@ export async function createBigCommerceCustomer(
       throw new Error('BigCommerce customer creation returned no customer data');
     }
 
-    return { id: customer.id };
+    return { id: customer.id, created: true };
   } catch (error) {
     if (error instanceof BigCommerceApiError && error.status === 422) {
       const existingCustomer = await getBigCommerceCustomerByEmail(params.email);
 
       if (existingCustomer) {
-        return existingCustomer;
+        return { id: existingCustomer.id, created: false };
       }
     }
 

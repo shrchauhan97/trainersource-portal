@@ -73,7 +73,7 @@ try {
   await shot(step++);
   const submitBtn = page.locator('button[type="submit"], input[type="submit"]').first();
   await submitBtn.click();
-} catch (e) {
+} catch (_e) {
   console.log(`  login form not as expected — screenshotting state and bailing`);
   await shot(step++);
   await browser.close();

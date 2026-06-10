@@ -4,7 +4,7 @@ import {
   getBigCommerceCustomerByEmail,
 } from '@/lib/bigcommerce';
 import { mintSessionToken } from '@/lib/session-token';
-import { sendEmail, newClientJoinedEmail } from '@/lib/email';
+import { sendEmail, newClientJoinedEmail, storefrontWelcomeEmail } from '@/lib/email';
 import type { Trainer } from '@/lib/types';
 
 // Best-effort trainer notification when their code is consumed. Never throws —
@@ -46,6 +46,53 @@ const allowedOrigins = new Set(
 );
 const fallbackOrigin = 'https://ultimate-peptides.com';
 
+// In-memory token-bucket rate limiter (per client IP). Mirrors the pattern in
+// /api/gate/verify. Necessary because the only existing brake on rapid
+// submission was the `FAILED_ATTEMPT_LOCK_MS = 3000` cooldown in
+// up-bc-cdn/bc-paste.js — that runs entirely client-side and is bypassed by
+// any non-browser client (curl, scripted attacker, devtools localStorage
+// clear). Without a server-side limiter the route is a brute-force oracle
+// for the `[A-Z0-9-]{4,40}` code space: each call returns a specific
+// `reason` distinguishing `not_found` / `consumed` / `expired` / `revoked`,
+// which lets an attacker enumerate the active-code set at machine speed.
+//
+// 30 req/min/IP is the same shape as /api/gate/verify and is well above any
+// legitimate caller (the BC theme submits exactly once per gate completion,
+// with 3s between retries → ~20 req/min worst case). Shared NAT clients
+// (corporate proxy, school WiFi) might burst above 30 if many customers
+// onboard simultaneously; that is acceptable because the customer-facing
+// failure mode (429 with Retry-After) is the same shape the storefront
+// gate already renders on the client-side cooldown — UX continuity holds.
+//
+// Limitation: process-local Map only. On serverless deploys each cold
+// instance has its own counter, so a determined attacker can scale across
+// instances. Acceptable trade-off vs adding a Redis dependency; the floor
+// raises substantially without that complexity. Revisit if traffic
+// justifies a shared store.
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+type IpBucket = { count: number; resetAt: number };
+const ipBuckets = new Map<string, IpBucket>();
+
+function rateLimitCheck(ip: string, now: number): { ok: boolean; retryAfter: number } {
+  const bucket = ipBuckets.get(ip);
+  if (!bucket || bucket.resetAt <= now) {
+    ipBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { ok: true, retryAfter: 0 };
+  }
+  if (bucket.count >= RATE_LIMIT_MAX) {
+    return { ok: false, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
+  }
+  bucket.count += 1;
+  return { ok: true, retryAfter: 0 };
+}
+
+// Test hook — Map mutations don't otherwise leak between cases.
+export function __resetRateLimit(): void {
+  ipBuckets.clear();
+}
+
 // Server-side country allowlist (review finding H1). The storefront form has
 // a dropdown, but the endpoint is reachable directly from any client so the
 // client-side list alone is not a security control. Default matches the
@@ -73,6 +120,7 @@ type ValidationReason =
   | 'country_blocked'
   | 'invalid_format'
   | 'invalid_input'
+  | 'rate_limited'
   | 'server_error';
 
 type ValidateCodeBody = {
@@ -103,6 +151,23 @@ function splitCustomerName(name: string) {
   };
 }
 
+// Best-effort welcome email for a newly-minted BigCommerce storefront account.
+// SHA-122: we now create the BC customer with a random password +
+// force_password_reset=true so the account exists with a valid credential.
+// This mail gives the customer the storefront reset-password link so a
+// returning visit (cleared localStorage, switched device) doesn't dead-end.
+async function sendStorefrontWelcomeEmail(params: { email: string; name: string }) {
+  try {
+    const { subject, html } = storefrontWelcomeEmail({
+      customerName: params.name,
+      customerEmail: params.email,
+    });
+    await sendEmail({ to: params.email, subject, html });
+  } catch (err) {
+    console.error('[notify] storefront welcome email failed', err);
+  }
+}
+
 async function ensureBigCommerceCustomer(params: {
   supabase: ReturnType<typeof createServiceClient>;
   customerId: string;
@@ -116,24 +181,35 @@ async function ensureBigCommerceCustomer(params: {
 
   const existingBigCommerceCustomer = await getBigCommerceCustomerByEmail(params.email);
   const { firstName, lastName } = splitCustomerName(params.name);
-  const bigCommerceCustomer =
-    existingBigCommerceCustomer ??
-    (await createBigCommerceCustomer({
+
+  let bigCommerceCustomerId: number;
+  let createdNew = false;
+  if (existingBigCommerceCustomer) {
+    bigCommerceCustomerId = existingBigCommerceCustomer.id;
+  } else {
+    const created = await createBigCommerceCustomer({
       email: params.email,
       first_name: firstName,
       last_name: lastName,
-    }));
+    });
+    bigCommerceCustomerId = created.id;
+    createdNew = created.created;
+  }
 
   const { error: updateBigCommerceCustomerError } = await params.supabase
     .from('customers')
-    .update({ bigcommerce_customer_id: String(bigCommerceCustomer.id) })
+    .update({ bigcommerce_customer_id: String(bigCommerceCustomerId) })
     .eq('id', params.customerId);
 
   if (updateBigCommerceCustomerError) {
     throw updateBigCommerceCustomerError;
   }
 
-  return bigCommerceCustomer.id;
+  if (createdNew) {
+    await sendStorefrontWelcomeEmail({ email: params.email, name: params.name });
+  }
+
+  return bigCommerceCustomerId;
 }
 
 function corsHeaders(origin: string | null) {
@@ -210,6 +286,34 @@ export async function POST(request: Request) {
   const t0 = Date.now();
   const userAgent = request.headers.get('user-agent');
   const ipAddress = getClientIp(request);
+
+  // Server-side rate-limit BEFORE the body parse + RPC + audit insert. Three
+  // reasons it has to be this early:
+  //   1. The audit insert below would amplify a brute-force burst into a
+  //      DB write per attempt; bouncing here keeps the audit table clean.
+  //   2. Body parse + the RPC call together are the expensive part of the
+  //      route; shedding load on a 429 is the cheap thing to do.
+  //   3. Returning the limited response BEFORE any code-shape feedback means
+  //      we don't even leak whether the rate-limit kicked in on a
+  //      well-formed vs malformed payload.
+  // `getClientIp` can return null on edge cases (missing proxy headers); we
+  // collapse those into a shared `unknown` bucket so every truly-unknown
+  // caller competes for the same 30-req/min slot.
+  const rateKey = ipAddress ?? 'unknown';
+  const rl = rateLimitCheck(rateKey, Date.now());
+  if (!rl.ok) {
+    return new Response(
+      JSON.stringify({ valid: false, reason: 'rate_limited' satisfies ValidationReason }),
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders(origin),
+          'Content-Type': 'application/json',
+          'Retry-After': String(rl.retryAfter),
+        },
+      },
+    );
+  }
 
   // Best-effort body parse — failure here means we can't even log a useful
   // audit row. Treat as invalid_input.

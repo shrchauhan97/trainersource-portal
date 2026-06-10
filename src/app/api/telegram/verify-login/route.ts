@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { normalizeSessionEmail } from '@/lib/auth';
 import { verifyLoginWidget, type LoginWidgetPayload } from '@/lib/telegram-auth';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
@@ -58,13 +59,14 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) {
     return NextResponse.json({ error: 'no-portal-session' }, { status: 401 });
   }
   const { data: trainer } = await supabase
     .from('trainers')
     .select('id')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle<{ id: string }>();
   if (!trainer) {
     return NextResponse.json({ error: 'not-a-trainer' }, { status: 403 });

@@ -136,7 +136,6 @@ async function resolveEmailAccess(
       return { allowed: false, reason: 'not_authorized' };
     }
   }
-
   const { data: hasPwd, error: rpcError } = await supabase.rpc('user_has_password_by_email', {
     addr: email,
   });

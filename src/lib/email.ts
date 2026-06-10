@@ -73,6 +73,14 @@ export function getSiteUrl(): string {
   return 'http://localhost:3000';
 }
 
+// Storefront URL (the BigCommerce-hosted shop) — distinct from `getSiteUrl()`
+// which returns the TrainerSource portal. The two live on different domains
+// and any BC-account link (login, reset-password) MUST point at the
+// storefront, never the portal.
+export function getBcStoreUrl(): string {
+  return (readEnv('BC_STORE_URL') ?? 'https://ultimate-peptides.com').replace(/\/$/, '');
+}
+
 /**
  * Fails loud if we're running in production with required email env vars
  * missing. Called from the send path so a misconfigured prod deploy crashes
@@ -302,6 +310,47 @@ export function firstOrderEmail(input: {
   return {
     subject,
     html: shell('Your first commission landed.', body, { label: 'View commissions', href: `${getSiteUrl()}/dashboard/commissions` }),
+  };
+}
+
+// SHA-122: sent the FIRST time a storefront customer's BigCommerce account is
+// minted by /api/codes/validate. The account is created with a random
+// password and `force_password_reset: true` (see createBigCommerceCustomer)
+// so the customer never has a credential they can type. This email gives
+// them a one-click path to the BC storefront reset-password page so a future
+// returning visit (cleared localStorage, switched device) doesn't dead-end
+// at "wrong password".
+//
+// The CTA points at the BC STOREFRONT, not the trainer portal — different
+// domain, distinct concern. See getBcStoreUrl().
+export function storefrontWelcomeEmail(input: {
+  customerName: string;
+  customerEmail: string;
+}) {
+  const subject = `Your Ultimate Peptides account is ready — set your password`;
+  const firstName = htmlEscape(input.customerName.split(' ')[0] ?? '');
+  const email = htmlEscape(input.customerEmail);
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Hey ${firstName} — your account on Ultimate Peptides is live. We've
+      linked it to <strong>${email}</strong> so you can sign in any time to
+      reorder or check your history.
+    </p>
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      Set a password now so you're not locked out on your next visit — no
+      access code needed once you're in.
+    </p>
+    <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:#41627b;">
+      If you didn't just place an order with us, you can ignore this email
+      — the account stays in a reset-required state until you set a password.
+    </p>
+  `;
+  return {
+    subject,
+    html: shell('Set your password.', body, {
+      label: 'Set my password',
+      href: `${getBcStoreUrl()}/login.php?action=reset_password`,
+    }),
   };
 }
 

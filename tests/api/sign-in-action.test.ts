@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSignInWithPassword = vi.fn();
 const mockSignOut = vi.fn();
+// Post-rebase: signInWithPasswordAction now looks up the trainer's status
+// (.from('trainers').select('status').eq('email', email).maybeSingle()) to
+// decide between /onboarding and /dashboard for the trainer role. Default the
+// mock to a non-onboarding trainer so the existing "/dashboard" assertions
+// hold; individual tests can override mockTrainerStatus.
+let mockTrainerStatus: string | null = 'active';
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () =>
@@ -10,6 +16,20 @@ vi.mock('@/lib/supabase/server', () => ({
         signInWithPassword: mockSignInWithPassword,
         signOut: mockSignOut,
       },
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data:
+                  mockTrainerStatus === null
+                    ? null
+                    : { status: mockTrainerStatus },
+                error: null,
+              }),
+          }),
+        }),
+      }),
     }),
 }));
 
@@ -58,6 +78,7 @@ function activeSessionPayload(email = 'trainer@example.com') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTrainerStatus = 'active';
 });
 
 describe('signInWithPasswordAction', () => {

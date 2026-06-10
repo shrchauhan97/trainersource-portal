@@ -41,7 +41,7 @@ const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const code = Array.from({ length: 8 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
 const expiresAt = new Date(Date.now() + expiresDays * 86400000).toISOString();
 
-const { data, error } = await admin.from("access_codes").insert({
+const { error } = await admin.from("access_codes").insert({
   code,
   type: "trainer",
   trainer_id: trainer.id,

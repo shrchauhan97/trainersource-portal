@@ -75,8 +75,42 @@ function setupFromHandlers(handlers: Record<string, () => unknown>) {
 }
 
 // Default `from()` chain used by happy-path tests: customer lookup by BC id,
-// previous-orders count returning 0, trainer lookup returning TRAINER.
-function defaultFromHandlers() {
+// previous-settled-orders count returning `priorSettledOrders`, trainer lookup
+// returning TRAINER.
+//
+// The route counts prior SETTLED orders, EXCLUDING the order currently being
+// reconciled, via
+//   .from('orders').select('id', {head})
+//     .eq('customer_id', …).in('status', […]).neq('bigcommerce_order_id', …)
+// so the orders mock must support the chain terminating on `.neq(...)`. We make
+// `.in(...)` return a thenable that ALSO exposes `.neq(...)` so the mock works
+// whether the route awaits after `.in(...)` (old, buggy) or after `.neq(...)`
+// (fixed). Both resolve to the SAME priorSettledOrders count — the regression
+// test instead asserts that `.neq(...)` was actually called with the current
+// order id, which is the load-bearing exclusion.
+//
+// `ordersNeqSpy` captures the (column, value) the route passes to `.neq(...)`
+// so a test can assert the current order is excluded from the prior count.
+let ordersNeqSpy: ReturnType<typeof vi.fn>;
+
+// The route reads the count AFTER `.neq(...)` (the current-order exclusion), so
+// `postExclusionCount` is the value that actually drives first-sale vs reorder.
+// `priorSettledOrders` is what `.in(...)` resolves to PRE-exclusion; it only
+// matters for the buggy/old path that awaited before `.neq(...)`. By default
+// the two are equal (no current-order row in the settled set). A regression
+// test sets them apart — e.g. pre=1, post=0 models "the only settled order IS
+// this very order", which the exclusion must drop to 0 → first_sale.
+function makeOrdersCountResult(priorSettledOrders: number, postExclusionCount = priorSettledOrders) {
+  // A Promise that resolves the PostgREST-style { count, error } shape, but
+  // which ALSO carries a `.neq` method so the chain can continue. This lets the
+  // same mock satisfy `await query.in(...)` and `await query.in(...).neq(...)`.
+  const result = Promise.resolve({ count: priorSettledOrders, error: null });
+  ordersNeqSpy = vi.fn().mockResolvedValue({ count: postExclusionCount, error: null });
+  (result as unknown as { neq: typeof ordersNeqSpy }).neq = ordersNeqSpy;
+  return result;
+}
+
+function defaultFromHandlers(priorSettledOrders = 0, postExclusionCount = priorSettledOrders) {
   return {
     customers: () => ({
       select: vi.fn().mockReturnThis(),
@@ -89,7 +123,11 @@ function defaultFromHandlers() {
     }),
     orders: () => ({
       select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+        eq: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue(
+            makeOrdersCountResult(priorSettledOrders, postExclusionCount),
+          ),
+        }),
       }),
     }),
     trainers: () => ({
@@ -324,6 +362,77 @@ describe('POST /api/webhooks/bigcommerce — atomicity + idempotency', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
+  it('reorder: a prior SETTLED order for the customer → reorder rate (10%)', async () => {
+    // Customer already has one settled order → this purchase is a reorder.
+    setupFromHandlers(defaultFromHandlers(1));
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          was_new: true,
+          reason: null,
+          order_id: 'order-uuid-2',
+          commission_id: 'commission-uuid-2',
+        },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/created', data: { id: 2002, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(supabaseRpcMock).toHaveBeenCalledWith(
+      'ingest_bc_order_and_commission',
+      expect.objectContaining({
+        p_commission_type: 'reorder',
+        p_commission_rate: 0.1,
+        // 10% of $150 = $15.00
+        p_commission_amount: 15,
+      }),
+    );
+  });
+
+  it('first sale: prior PENDING-only orders (zero settled) still count as first_sale (20%)', async () => {
+    // Regression for first-sale misclassification: an ACH / "awaiting payment"
+    // first order creates a `pending` orders row but NO commission. The
+    // customer's first commissionable order must still be classified as
+    // first_sale — counting that pending row would wrongly demote it to a
+    // reorder and underpay the trainer. The route counts only SETTLED prior
+    // orders, so the settled count here is 0.
+    setupFromHandlers(defaultFromHandlers(0));
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          was_new: true,
+          reason: null,
+          order_id: 'order-uuid-3',
+          commission_id: 'commission-uuid-3',
+        },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/created', data: { id: 3003, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(supabaseRpcMock).toHaveBeenCalledWith(
+      'ingest_bc_order_and_commission',
+      expect.objectContaining({
+        p_commission_type: 'first_sale',
+        p_commission_rate: 0.2,
+        // 20% of $150 = $30.00
+        p_commission_amount: 30,
+      }),
+    );
+  });
+
   it('non-actionable status (cancelled): skips RPC entirely', async () => {
     setupFromHandlers(defaultFromHandlers());
     global.fetch = vi.fn().mockResolvedValue({
@@ -340,6 +449,169 @@ describe('POST /api/webhooks/bigcommerce — atomicity + idempotency', () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, skipped: true, reason: 'status_not_actionable' });
     expect(supabaseRpcMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // PR #45 — order/updated reconcile must not count the order being settled as
+  // a "prior settled order". On the ACH settle path the order row is upserted
+  // to a settled status; if the prior-settled COUNT does not exclude THIS
+  // order's bigcommerce_order_id, the order sees *itself* as a prior settled
+  // order, flips first_sale (20%) → reorder (10%), and suppresses the
+  // first-sale email — underpaying the trainer on exactly the path this PR
+  // exists to fix.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  it('first-ever order via order/updated settle: booked first_sale @20% and excludes self from prior count', async () => {
+    // The order being reconciled is the customer's FIRST. By the time this
+    // order/updated lands, the order row already exists in a settled status
+    // (created-then-settled, or a re-delivered settle). A naive prior-settled
+    // count returns 1 (it counts THIS order) → reorder @10%. The route must
+    // exclude the current bigcommerce_order_id, so the genuine count drops to 0
+    // and the order is correctly first_sale @20%. We model that with pre=1
+    // (the order counts itself), post=0 (after excluding self, none remain).
+    setupFromHandlers(defaultFromHandlers(1, 0));
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          was_new: true,
+          reason: null,
+          order_id: 'order-uuid-settle-1',
+          commission_id: 'commission-uuid-settle-1',
+        },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/updated', data: { id: 1001, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+
+    // The exclusion is the load-bearing fix: the prior-settled count must call
+    // .neq('bigcommerce_order_id', '<this order id>').
+    expect(ordersNeqSpy).toHaveBeenCalledWith('bigcommerce_order_id', '1001');
+
+    // Routed through the reconcile RPC with the FIRST-SALE rate, not reorder.
+    expect(supabaseRpcMock).toHaveBeenCalledWith(
+      'reconcile_bc_order_and_commission',
+      expect.objectContaining({
+        p_bigcommerce_order_id: '1001',
+        p_commission_type: 'first_sale',
+        p_commission_rate: 0.2,
+        // 20% of $150 = $30.00
+        p_commission_amount: 30,
+      }),
+    );
+
+    // First-sale email fires exactly once for a genuine first settled sale.
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('order/updated settle for a customer WITH a prior settled order: booked reorder @10% (no over-correction)', async () => {
+    // Guard against over-correcting #45: a customer who genuinely has one OTHER
+    // prior settled order (i.e. the count EXCLUDING this order is still 1) must
+    // be a reorder. pre=2 (this order + one genuinely prior), post=1 (after
+    // excluding self, one real prior settled order remains) → reorder.
+    setupFromHandlers(defaultFromHandlers(2, 1));
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          was_new: true,
+          reason: null,
+          order_id: 'order-uuid-reorder',
+          commission_id: 'commission-uuid-reorder',
+        },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/updated', data: { id: 2002, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(ordersNeqSpy).toHaveBeenCalledWith('bigcommerce_order_id', '2002');
+    expect(supabaseRpcMock).toHaveBeenCalledWith(
+      'reconcile_bc_order_and_commission',
+      expect.objectContaining({
+        p_commission_type: 'reorder',
+        p_commission_rate: 0.1,
+        // 10% of $150 = $15.00
+        p_commission_amount: 15,
+      }),
+    );
+  });
+
+  it('still-pending order/updated (not settled): no commission payload, no email, RPC ack only', async () => {
+    // An order/updated that has NOT yet settled (still "Awaiting Payment" →
+    // pending). The order row is upserted but NO commission is computed
+    // (commission_type/amount must be NULL) and NO first-sale email fires.
+    setupFromHandlers(defaultFromHandlers(0));
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => bcOrderResponse({ status: 'Awaiting Payment' }),
+    }) as typeof fetch;
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          ok: true,
+          was_new: false,
+          reason: 'no_commission',
+          order_id: 'order-uuid-pending',
+          commission_id: null,
+        },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/updated', data: { id: 4004, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(supabaseRpcMock).toHaveBeenCalledWith(
+      'reconcile_bc_order_and_commission',
+      expect.objectContaining({
+        p_status: 'pending',
+        p_commission_type: null,
+        p_commission_rate: null,
+        p_commission_amount: null,
+      }),
+    );
+    // No commission → no first-sale email, no double-book.
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('reconcile RPC not deployed (42883 undefined_function): returns 200 reconcile_pending, no 5xx', async () => {
+    // The reconcile RPC ships in a migration applied to prod separately from
+    // the Vercel deploy. Until it exists, an order/updated must NOT 5xx (which
+    // would trigger a BC retry-storm) — the route swallows the undefined_func
+    // error and acks 200 { reconcile_pending: true }.
+    setupFromHandlers(defaultFromHandlers(0));
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: '42883',
+        message:
+          'function public.reconcile_bc_order_and_commission(...) does not exist',
+      },
+    });
+
+    const { POST } = await import('@/app/api/webhooks/bigcommerce/route');
+    const res = await POST(
+      buildRequest({ scope: 'store/order/updated', data: { id: 5005, customer_id: 42 } }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: true, reconcile_pending: true });
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

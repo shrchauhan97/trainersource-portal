@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { normalizeSessionEmail } from '@/lib/auth';
 import { CODE_EXPIRY_DAYS, CODE_LENGTH } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -61,14 +62,15 @@ async function getTrainerBySession() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user?.email) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!sessionEmail) {
     redirect('/login');
   }
 
   const { data: trainer, error } = await supabase
     .from('trainers')
     .select('*')
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .single();
 
   if (error || !trainer) {

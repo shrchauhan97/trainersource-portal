@@ -29,6 +29,20 @@ vi.mock('@/lib/supabase/server', () => ({
         };
       },
       rpc: mockRpc,
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data:
+                  mockTrainerStatus === null
+                    ? null
+                    : { status: mockTrainerStatus },
+                error: null,
+              }),
+          }),
+        }),
+      }),
     })
   ),
 }));
@@ -52,6 +66,7 @@ async function getLocation(res: Response): Promise<string | null> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTrainerStatus = 'active';
   mockExchange.mockResolvedValue({ error: null });
   mockVerifyOtp.mockResolvedValue({ error: null });
   mockGetUser.mockResolvedValue({

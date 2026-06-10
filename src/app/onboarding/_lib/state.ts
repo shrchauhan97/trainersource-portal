@@ -1,4 +1,5 @@
 import 'server-only';
+import { normalizeSessionEmail } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import type {
@@ -17,7 +18,8 @@ export async function loadTrainerOnboardingState(): Promise<TrainerOnboardingSta
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  const sessionEmail = normalizeSessionEmail(user?.email);
+  if (!user || !sessionEmail) {
     redirect('/login');
   }
 
@@ -26,7 +28,7 @@ export async function loadTrainerOnboardingState(): Promise<TrainerOnboardingSta
     .select(
       'id, name, email, city, country, status, onboarding_step',
     )
-    .eq('email', user.email)
+    .eq('email', sessionEmail)
     .maybeSingle();
 
   if (!trainer) {
