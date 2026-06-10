@@ -114,8 +114,8 @@ function friendlyDbError(error: { code?: string; message?: string; details?: str
 export async function submitApplication(formData: FormData) {
   const supabase = createServiceClient();
 
-  const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
+  const name = (formData.get('name') as string)?.trim();
+  const email = (formData.get('email') as string)?.trim().toLowerCase();
   const phone = formData.get('phone') as string;
   const country = formData.get('country') as string;
   const city = formData.get('city') as string;

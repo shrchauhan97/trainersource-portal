@@ -118,6 +118,10 @@ type SendOptions = {
   subject: string;
   html: string;
   text?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+  }>;
 };
 
 // Fire-and-forget. Email failures must NEVER break the parent request — they
@@ -158,6 +162,7 @@ export async function sendEmail(opts: SendOptions): Promise<{ ok: boolean; id?: 
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
+      attachments: opts.attachments,
     });
     if (error) {
       console.error('[email] send failed', { to: opts.to, error });
@@ -348,6 +353,30 @@ export function newTrainerApplicationEmail(input: {
   };
 }
 
+export function magicLinkLoginEmail(input: { signInUrl: string; isReset?: boolean }) {
+  const subject = input.isReset ? 'Reset your TrainerSource password' : 'Sign in to TrainerSource';
+  const headline = input.isReset ? 'Reset your password.' : 'Finish signing in.';
+  const intro = input.isReset
+    ? 'Use the button below to choose a new password for your TrainerSource account.'
+    : 'Use the button below to finish signing in to TrainerSource. This link is single-use and expires soon.';
+  const label = input.isReset ? 'Reset password' : 'Sign in';
+  const safeHref = htmlEscape(input.signInUrl);
+
+  const body = `
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
+      ${intro}
+    </p>
+    <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#41627b;">
+      If you didn&apos;t request this email, you can ignore it.
+    </p>
+  `;
+
+  return {
+    subject,
+    html: shell(headline, body, { label, href: safeHref }),
+  };
+}
+
 export function trainerOnboardingInviteEmail(input: {
   trainerName: string;
   city: string;
@@ -367,7 +396,7 @@ export function trainerOnboardingInviteEmail(input: {
       This simple process will ask you to share your credentials and goals, undergo a short training course and sign an Affiliate Agreement. After this onboarding process is complete, you'll be an Active affiliate and can begin referring clients to TrainerSource products.
     </p>
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
-      Hit the link below to start your onboarding process. (Have copies of any relevant credential documents ready for upload.)
+      Sign in with the email you applied with, then complete onboarding. (Have copies of any relevant credential documents ready for upload.)
     </p>
     <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
       Looking forward to working with you!
@@ -378,8 +407,8 @@ export function trainerOnboardingInviteEmail(input: {
   return {
     subject,
     html: shell('You have been invited into onboarding.', body, {
-      label: 'Start Onboarding',
-      href: `${getSiteUrl()}/onboarding/application`,
+      label: 'Sign in to start onboarding',
+      href: `${getSiteUrl()}/login`,
     }),
   };
 }
@@ -403,6 +432,9 @@ export function onboardingCompleteAdminEmail(input: {
       <tr><td style="padding:6px 16px 6px 0;font-size:12px;color:#41627b;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">Email</td><td style="padding:6px 0;font-size:14px;color:#173041;">${trainerEmail}</td></tr>
       <tr><td style="padding:6px 16px 6px 0;font-size:12px;color:#41627b;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">City</td><td style="padding:6px 0;font-size:14px;color:#173041;">${city}</td></tr>
     </table>
+    <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#41627b;">
+      The trainer&apos;s signed agreement is attached to this email for your review.
+    </p>
   `;
 
   return {

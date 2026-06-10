@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { onboardingCompleteAdminEmail, sendEmail } from '@/lib/email';
+import { downloadOnboardingFile } from '../_lib/storage';
 import type { OnboardingStep } from '../_lib/types';
 
 // Distinct quiz questions the trainer must have answered correctly to pass
@@ -39,6 +40,7 @@ async function notifyAdminsOfOnboardingCompletion(payload: {
   trainerName: string;
   trainerEmail: string;
   city: string;
+  signedAgreementPath: string;
 }): Promise<void> {
   try {
     const supabase = createServiceClient();
@@ -62,6 +64,21 @@ async function notifyAdminsOfOnboardingCompletion(payload: {
     const { subject, html } = onboardingCompleteAdminEmail(payload);
     console.log('[go-live] sending onboarding-complete email to', recipients.length, 'admin(s), subject:', subject);
 
+    // Download the signed agreement from storage
+    let agreementBuffer: Buffer | null = null;
+    if (payload.signedAgreementPath) {
+      agreementBuffer = await downloadOnboardingFile(payload.signedAgreementPath);
+      if (!agreementBuffer) {
+        console.warn('[go-live] could not download signed agreement, sending email without attachment');
+      } else {
+        console.log('[go-live] signed agreement downloaded successfully for attachment');
+      }
+    }
+
+    const attachments = agreementBuffer
+      ? [{ filename: 'signed-agreement.pdf', content: agreementBuffer }]
+      : undefined;
+
     let succeeded = 0;
     let failed = 0;
 
@@ -70,13 +87,13 @@ async function notifyAdminsOfOnboardingCompletion(payload: {
       // Throttle: wait before each send (except the first)
       if (i > 0) await delay(SEND_GAP_MS);
 
-      let result = await sendEmail({ to, subject, html });
+      let result = await sendEmail({ to, subject, html, attachments });
 
       // Retry once on rate-limit (429)
       if (!result.ok && result.error?.includes('Too many requests')) {
         console.warn(`[go-live] rate-limited for ${to}, retrying in ${RATE_LIMIT_RETRY_MS}ms`);
         await delay(RATE_LIMIT_RETRY_MS);
-        result = await sendEmail({ to, subject, html });
+        result = await sendEmail({ to, subject, html, attachments });
       }
 
       if (result.ok) {
@@ -262,6 +279,7 @@ export async function completeOnboardingV2(trainerId: string): Promise<GoLiveRes
     trainerName: trainer.name,
     trainerEmail: trainer.email,
     city: trainer.city,
+    signedAgreementPath: agreement.data?.signed_agreement_path ?? '',
   });
 
   revalidatePath('/onboarding');
