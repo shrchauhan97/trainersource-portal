@@ -42,6 +42,12 @@ vi.mock('@/lib/session-token', () => ({
   mintSessionToken: () => 'fake-session-token',
 }));
 
+// SHA-21: the route imports @sentry/nextjs for BC-sync failure escalation.
+// Mock it so vitest never loads the real instrumentation.
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+}));
+
 import { POST, __resetRateLimit } from '@/app/api/codes/validate/route';
 
 beforeEach(() => {

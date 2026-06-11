@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/nextjs';
+
 import { createServiceClient } from '@/lib/supabase/service';
 import {
   createBigCommerceCustomer,
@@ -443,26 +445,56 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Best-effort BigCommerce sync. Failures here do NOT roll back the
-    //    consume — the customer is in our DB and the code is consumed; BC
-    //    can be reconciled by the webhook path later.
+    // 3. Best-effort BigCommerce sync (SHA-21). The RPC above already burned
+    //    the code, so a BC failure must NOT fail the response — the customer
+    //    would be stranded with a consumed code and no way to re-validate.
+    //    But "best-effort" can't mean "silent": without a BC customer the
+    //    storefront checkout dead-ends. So we (a) retry once to soak the
+    //    transient-failure case, (b) escalate a final failure to Sentry
+    //    (→ Linear via the alert pipeline) and into the code_attempts audit
+    //    row so stranded customers are queryable, and (c) flag the response
+    //    so the gate UI can message. Recovery: scripts/reconcile-bc-customers.mjs
+    //    sweeps customers with a null bigcommerce_customer_id and heals them.
     let bigCommerceCustomerId: number | null = null;
-    try {
-      const { data: existing } = await supabase
-        .from('customers')
-        .select('bigcommerce_customer_id')
-        .eq('id', row.customer_id)
-        .maybeSingle<{ bigcommerce_customer_id: string | null }>();
+    let bcSyncError: unknown = null;
+    const BC_SYNC_ATTEMPTS = 2;
+    const BC_SYNC_RETRY_DELAY_MS = 500;
+    for (let attempt = 1; attempt <= BC_SYNC_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          await new Promise<void>((resolve) => setTimeout(resolve, BC_SYNC_RETRY_DELAY_MS));
+        }
+        // Re-read inside the loop: if attempt 1 died between the BC create
+        // and the customers UPDATE, ensureBigCommerceCustomer's email lookup
+        // dedupes against the already-created BC record on attempt 2.
+        const { data: existing } = await supabase
+          .from('customers')
+          .select('bigcommerce_customer_id')
+          .eq('id', row.customer_id)
+          .maybeSingle<{ bigcommerce_customer_id: string | null }>();
 
-      bigCommerceCustomerId = await ensureBigCommerceCustomer({
-        supabase,
-        customerId: row.customer_id,
-        email,
-        name,
-        currentBigCommerceCustomerId: existing?.bigcommerce_customer_id ?? null,
+        bigCommerceCustomerId = await ensureBigCommerceCustomer({
+          supabase,
+          customerId: row.customer_id,
+          email,
+          name,
+          currentBigCommerceCustomerId: existing?.bigcommerce_customer_id ?? null,
+        });
+        bcSyncError = null;
+        break;
+      } catch (bigCommerceError) {
+        bcSyncError = bigCommerceError;
+        console.error(
+          `BigCommerce customer sync failed (attempt ${attempt}/${BC_SYNC_ATTEMPTS})`,
+          bigCommerceError,
+        );
+      }
+    }
+    if (bcSyncError !== null) {
+      Sentry.captureException(bcSyncError, {
+        tags: { route: 'codes/validate', step: 'bc_sync' },
+        extra: { customer_id: row.customer_id, access_code_id: row.access_code_id },
       });
-    } catch (bigCommerceError) {
-      console.error('BigCommerce customer sync failed', bigCommerceError);
     }
 
     // 4. Best-effort trainer notification. Same idempotency story: if Resend
@@ -477,13 +509,24 @@ export async function POST(request: Request) {
       clientCountry: country,
     });
 
+    // Outcome stays 'success' (the gate DID succeed — code consumed, session
+    // minted) but a failed BC sync is recorded in reason_detail so
+    // `SELECT ... WHERE reason_detail LIKE 'bc_sync_failed%'` finds every
+    // stranded customer. `bc_sync: 'failed'` is additive — bc-paste.js
+    // ignores unknown fields, newer gate builds can warn the customer.
+    const bcSyncDetail =
+      bcSyncError !== null
+        ? `bc_sync_failed: ${bcSyncError instanceof Error ? bcSyncError.message : String(bcSyncError)}`
+        : null;
     return finish('success', {
       access_code_id: row.access_code_id,
       trainer_id: row.trainer_id,
+      reason_detail: bcSyncDetail,
       response: {
         valid: true,
         customer_id: row.customer_id,
         bc_customer_id: bigCommerceCustomerId,
+        ...(bcSyncError !== null ? { bc_sync: 'failed' } : {}),
         session_token: mintSessionToken(row.customer_id),
       },
     });

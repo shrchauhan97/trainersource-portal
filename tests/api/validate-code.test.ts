@@ -38,6 +38,12 @@ vi.mock('@/lib/session-token', () => ({
   mintSessionToken: () => 'fake-session-token',
 }));
 
+// SHA-21: the route escalates a final BC-sync failure to Sentry. Mock the
+// whole SDK so vitest never loads the real instrumentation.
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+}));
+
 beforeEach(async () => {
   rpcMock.mockReset();
   fromMock.mockReset();
@@ -474,6 +480,145 @@ describe('POST /api/codes/validate', () => {
     expect(res.status).toBe(200);
     expect(createMock.mock.calls.length).toBe(createCallsBefore);
     expect(welcomeMock.mock.calls.length).toBe(welcomeCallsBefore);
+  });
+
+  // SHA-21: the RPC consumes the code BEFORE the BigCommerce sync runs, so a
+  // BC failure must never flip the response to valid:false (the customer
+  // could not re-validate — their code is burned). But it must not be
+  // silent either: the failure has to reach Sentry, the audit row, and the
+  // response payload so the strand is recoverable.
+  describe('BigCommerce sync failure (SHA-21)', () => {
+    function okRpcRow(suffix: string) {
+      return {
+        data: [
+          {
+            ok: true,
+            reason: null,
+            access_code_id: `ac-${suffix}`,
+            customer_id: `cust-${suffix}`,
+            trainer_id: null,
+          },
+        ],
+        error: null,
+      };
+    }
+
+    function bcSyncFromHandlers(captured: Array<Record<string, unknown>>) {
+      setupFromHandlers({
+        customers: () => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { bigcommerce_customer_id: null },
+                  error: null,
+                }),
+            }),
+          }),
+          update: () => ({
+            eq: () => Promise.resolve({ error: null }),
+          }),
+        }),
+        code_attempts: () => ({
+          insert: (row: Record<string, unknown>) => {
+            captured.push(row);
+            return Promise.resolve({ error: null });
+          },
+        }),
+      });
+    }
+
+    it('still returns valid:true when BC sync fails on every attempt, but flags the response, audit row, and Sentry', async () => {
+      rpcMock.mockResolvedValueOnce(okRpcRow('21a'));
+      const captured: Array<Record<string, unknown>> = [];
+      bcSyncFromHandlers(captured);
+
+      const bigcommerceMod = await import('@/lib/bigcommerce');
+      const lookupMock = bigcommerceMod.getBigCommerceCustomerByEmail as ReturnType<typeof vi.fn>;
+      // Module-level mock — earlier tests in this file already called it, so
+      // assert on the delta, not the absolute count.
+      const lookupsBefore = lookupMock.mock.calls.length;
+      // Both the initial attempt and the retry die.
+      lookupMock
+        .mockRejectedValueOnce(new Error('BC down (1)'))
+        .mockRejectedValueOnce(new Error('BC down (2)'));
+
+      const sentryMod = await import('@sentry/nextjs');
+      const captureMock = sentryMod.captureException as ReturnType<typeof vi.fn>;
+      const capturesBefore = captureMock.mock.calls.length;
+
+      const { POST } = await import('@/app/api/codes/validate/route');
+      const res = await POST(
+        buildRequest({
+          code: 'BC-DOWN-001',
+          email: 'a@b.co',
+          name: 'A B',
+          country: 'Singapore',
+          city: 'Singapore',
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // The gate result is still a success — code consumed, session minted.
+      expect(body).toMatchObject({
+        valid: true,
+        customer_id: 'cust-21a',
+        bc_customer_id: null,
+        bc_sync: 'failed',
+        session_token: 'fake-session-token',
+      });
+      // Retry actually happened: 2 lookup attempts.
+      expect(lookupMock.mock.calls.length).toBe(lookupsBefore + 2);
+      // Audit row keeps outcome=success but records the strand.
+      expect(captured).toHaveLength(1);
+      expect(captured[0]).toMatchObject({ outcome: 'success' });
+      expect(captured[0].reason_detail).toMatch(/^bc_sync_failed: BC down/);
+      // Escalated to Sentry (→ Linear pipeline).
+      expect(captureMock.mock.calls.length).toBe(capturesBefore + 1);
+    }, 15_000);
+
+    it('recovers on the retry: transient BC failure ends with a mapped bc_customer_id and no failure markers', async () => {
+      rpcMock.mockResolvedValueOnce(okRpcRow('21b'));
+      const captured: Array<Record<string, unknown>> = [];
+      bcSyncFromHandlers(captured);
+
+      const bigcommerceMod = await import('@/lib/bigcommerce');
+      const lookupMock = bigcommerceMod.getBigCommerceCustomerByEmail as ReturnType<typeof vi.fn>;
+      const createMock = bigcommerceMod.createBigCommerceCustomer as ReturnType<typeof vi.fn>;
+      lookupMock
+        .mockRejectedValueOnce(new Error('BC blip'))
+        .mockResolvedValueOnce(null);
+      createMock.mockResolvedValueOnce({ id: 4242, created: true });
+
+      const sentryMod = await import('@sentry/nextjs');
+      const captureMock = sentryMod.captureException as ReturnType<typeof vi.fn>;
+      const capturesBefore = captureMock.mock.calls.length;
+
+      const { POST } = await import('@/app/api/codes/validate/route');
+      const res = await POST(
+        buildRequest({
+          code: 'BC-BLIP-002',
+          email: 'a@b.co',
+          name: 'A B',
+          country: 'Singapore',
+          city: 'Singapore',
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({
+        valid: true,
+        customer_id: 'cust-21b',
+        bc_customer_id: 4242,
+      });
+      expect(body.bc_sync).toBeUndefined();
+      expect(captured).toHaveLength(1);
+      expect(captured[0]).toMatchObject({ outcome: 'success', reason_detail: null });
+      // A recovered sync is not an incident — no Sentry noise.
+      expect(captureMock.mock.calls.length).toBe(capturesBefore);
+    }, 15_000);
   });
 
   it('treats an RPC supabase error as server_error and still records the attempt', async () => {
