@@ -9,6 +9,8 @@ const mockSignOut = vi.fn();
 const mockRpc = vi.fn();
 const mockTrainerMaybeSingle = vi.fn();
 
+const mockTrainerEq = vi.fn();
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() =>
     Promise.resolve({
@@ -22,9 +24,12 @@ vi.mock('@/lib/supabase/server', () => ({
         if (table !== 'trainers') throw new Error('unexpected table: ' + table);
         return {
           select: () => ({
-            eq: () => ({
-              maybeSingle: mockTrainerMaybeSingle,
-            }),
+            eq: (...args: unknown[]) => {
+              mockTrainerEq(...args);
+              return {
+                maybeSingle: mockTrainerMaybeSingle,
+              };
+            },
           }),
         };
       },
@@ -34,9 +39,13 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 const mockGetUserRole = vi.fn();
-vi.mock('@/lib/auth', () => ({
-  getUserRole: (...args: unknown[]) => mockGetUserRole(...args),
-}));
+vi.mock('@/lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth')>();
+  return {
+    ...actual,
+    getUserRole: (...args: unknown[]) => mockGetUserRole(...args),
+  };
+});
 
 import { GET } from '@/app/auth/callback/route';
 
@@ -148,5 +157,17 @@ describe('GET /auth/callback', () => {
     const loc = await getLocation(res);
     expect(loc).toContain('/login?error=auth_callback_failed');
     expect(loc).not.toContain('/account/set-password');
+  });
+
+  it('normalizes mixed-case session email for trainer status routing', async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: 'uid-1', email: 'Trainer@Example.COM' } },
+      error: null,
+    });
+    mockTrainerMaybeSingle.mockResolvedValueOnce({ data: { status: 'onboarding' }, error: null });
+
+    const res = await GET(buildRequest({ token_hash: 'hash-abc', type: 'magiclink' }));
+    expect(mockTrainerEq).toHaveBeenCalledWith('email', 'trainer@example.com');
+    expect(await getLocation(res)).toContain('/onboarding');
   });
 });

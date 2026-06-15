@@ -13,6 +13,7 @@ import {
   newClientJoinedEmail,
   firstOrderEmail,
   storefrontWelcomeEmail,
+  onboardingCompleteAdminEmail,
 } from '@/lib/email';
 
 describe('htmlEscape', () => {
@@ -300,5 +301,42 @@ describe('storefrontWelcomeEmail', () => {
         process.env.BC_STORE_URL = originalEnv;
       }
     }
+  });
+});
+
+describe('onboardingCompleteAdminEmail', () => {
+  const base = {
+    trainerId: 'trainer-1',
+    trainerName: 'Alice',
+    trainerEmail: 'alice@example.com',
+    city: 'Austin',
+  };
+
+  it('claims attachment when hasAttachment is true', () => {
+    const { html } = onboardingCompleteAdminEmail({
+      ...base,
+      hasAttachment: true,
+    });
+    expect(html).toContain('signed agreement is attached');
+  });
+
+  it('honest fallback copy when attachment is missing but path is known', () => {
+    const path = 'trainer-1/signed-agreement-99.pdf';
+    const { html } = onboardingCompleteAdminEmail({
+      ...base,
+      hasAttachment: false,
+      signedAgreementPath: path,
+    });
+    expect(html).toContain('attach the signed agreement automatically');
+    expect(html).toContain(path);
+    expect(html).not.toContain('is attached to this email');
+  });
+
+  it('notes missing path when no signed agreement path was recorded', () => {
+    const { html } = onboardingCompleteAdminEmail({
+      ...base,
+      hasAttachment: false,
+    });
+    expect(html).toContain('No signed agreement path was recorded');
   });
 });

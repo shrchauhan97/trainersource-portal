@@ -1,5 +1,6 @@
 'use server';
 
+import * as Sentry from '@sentry/nextjs';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -107,6 +108,10 @@ async function resolveEmailAccess(
       code: adminError.code,
       message: adminError.message,
     });
+    Sentry.captureMessage('login: admins lookup failed', {
+      level: 'error',
+      extra: { email, code: adminError.code, message: adminError.message },
+    });
     return { allowed: false, reason: 'server_error' };
   }
 
@@ -122,6 +127,10 @@ async function resolveEmailAccess(
         email,
         code: trainerError.code,
         message: trainerError.message,
+      });
+      Sentry.captureMessage('login: trainers lookup failed', {
+        level: 'error',
+        extra: { email, code: trainerError.code, message: trainerError.message },
       });
       return { allowed: false, reason: 'server_error' };
     }
@@ -144,6 +153,10 @@ async function resolveEmailAccess(
       email,
       code: rpcError.code,
       message: rpcError.message,
+    });
+    Sentry.captureMessage('login: user_has_password_by_email rpc failed', {
+      level: 'error',
+      extra: { email, code: rpcError.code, message: rpcError.message },
     });
     return { allowed: false, reason: 'server_error' };
   }
@@ -195,9 +208,15 @@ export async function sendMagicLinkAction(
   const service = createServiceClient();
   const ensured = await ensureAuthUserForEmail(service, email);
   if (!ensured.ok) {
+    Sentry.captureMessage('login: ensureAuthUserForEmail failed', {
+      level: 'error',
+      extra: { email, message: ensured.message },
+    });
     return { ok: false, reason: 'server_error' };
   }
 
+  // redirectTo satisfies Supabase redirect allowlist validation; the email
+  // link is built separately from hashed_token via buildMagicLinkCallbackUrl.
   const redirectTo = new URL('/auth/callback', getSiteUrl());
   if (intent === 'reset') {
     redirectTo.searchParams.set('intent', 'reset');
@@ -216,6 +235,10 @@ export async function sendMagicLinkAction(
       code: linkError?.code,
       message: linkError?.message,
     });
+    Sentry.captureMessage('login: generateLink failed', {
+      level: 'error',
+      extra: { email, code: linkError?.code, message: linkError?.message },
+    });
     return { ok: false, reason: 'server_error' };
   }
 
@@ -230,6 +253,10 @@ export async function sendMagicLinkAction(
     console.error('[sendMagicLinkAction] sendEmail failed', {
       email,
       error: sendResult.error,
+    });
+    Sentry.captureMessage('login: magic link sendEmail failed', {
+      level: 'error',
+      extra: { email, error: sendResult.error },
     });
     return { ok: false, reason: 'send_failed' };
   }

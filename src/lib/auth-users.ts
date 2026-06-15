@@ -27,12 +27,12 @@ export async function ensureAuthUserForEmail(
   const status = (error as { status?: number }).status;
   const message = error.message?.toLowerCase() ?? '';
 
-  if (
+  const isDuplicateUser =
     code === 'email_exists' ||
-    status === 422 ||
     message.includes('already been registered') ||
-    message.includes('already exists')
-  ) {
+    message.includes('already exists');
+
+  if (isDuplicateUser) {
     return { ok: true };
   }
 

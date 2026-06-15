@@ -12,7 +12,8 @@ import {
 } from './actions';
 
 const callbackErrorMessages: Record<string, string> = {
-  auth_callback_failed: 'The confirmation link didn\'t work. This can happen if you clicked it in a different browser profile. Try requesting a new magic link from the same browser where you signed up.',
+  auth_callback_failed:
+    "The sign-in link didn't work. It may have expired or already been used. Request a new magic link and open it promptly.",
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
 };
@@ -91,6 +92,8 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
       } else {
         await sendMagicLink(normalizedEmail);
       }
+    } catch {
+      setError('Something went wrong. Please try again in a moment.');
     } finally {
       setIsSubmitting(false);
     }
@@ -111,6 +114,8 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
           ? 'Check your email for a link to reset your password.'
           : 'Check your email for a link to finish signing in.',
       );
+    } catch {
+      setError('Something went wrong. Please try again in a moment.');
     } finally {
       setIsSubmitting(false);
     }

@@ -4,6 +4,12 @@ const mockFrom = vi.fn();
 const mockRpc = vi.fn();
 const mockCreateUser = vi.fn();
 const mockGenerateLink = vi.fn();
+const mockCaptureMessage = vi.fn();
+
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+  captureException: vi.fn(),
+}));
 
 vi.mock('@/lib/supabase/service', () => ({
   createServiceClient: () => ({
@@ -18,19 +24,19 @@ vi.mock('@/lib/supabase/service', () => ({
   }),
 }));
 
+const mockEnsureAuthUserForEmail = vi.fn();
 vi.mock('@/lib/auth-users', () => ({
-  ensureAuthUserForEmail: vi.fn(async () => ({ ok: true as const })),
+  ensureAuthUserForEmail: (...args: unknown[]) => mockEnsureAuthUserForEmail(...args),
 }));
 
 const mockSendEmail = vi.fn();
-vi.mock('@/lib/email', () => ({
-  getSiteUrl: () => 'http://localhost:3000',
-  magicLinkLoginEmail: () => ({
-    subject: 'Sign in',
-    html: '<p>link</p>',
-  }),
-  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
-}));
+vi.mock('@/lib/email', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/email')>();
+  return {
+    ...actual,
+    sendEmail: (...args: unknown[]) => mockSendEmail(...args),
+  };
+});
 
 const { ipTick } = vi.hoisted(() => ({ ipTick: { n: 0 } }));
 vi.mock('next/headers', () => ({
@@ -69,6 +75,7 @@ function trainersRow(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockEnsureAuthUserForEmail.mockResolvedValue({ ok: true });
   mockCreateUser.mockResolvedValue({ error: null });
   mockGenerateLink.mockResolvedValue({
     data: { properties: { hashed_token: 'tok-hash-123' } },
@@ -100,14 +107,64 @@ describe('sendMagicLinkAction', () => {
 
     const result = await sendMagicLinkAction('trainer@example.com');
     expect(result).toEqual({ ok: true });
+    expect(mockEnsureAuthUserForEmail).toHaveBeenCalledBefore(mockGenerateLink);
+    expect(mockEnsureAuthUserForEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      'trainer@example.com',
+    );
     expect(mockGenerateLink).toHaveBeenCalledWith({
       type: 'magiclink',
       email: 'trainer@example.com',
       options: { redirectTo: 'http://localhost:3000/auth/callback' },
     });
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'trainer@example.com', subject: 'Sign in' }),
+      expect.objectContaining({
+        to: 'trainer@example.com',
+        subject: 'Sign in to TrainerSource',
+      }),
     );
+    const html = mockSendEmail.mock.calls[0][0].html as string;
+    expect(html).toContain(
+      'http://localhost:3000/auth/callback?token_hash=tok-hash-123&amp;type=magiclink',
+    );
+  });
+
+  it('normalizes mixed-case email before ensure, generateLink, and send', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'admins') return adminsRow(null);
+      if (table === 'trainers') return trainersRow({ status: 'onboarding' });
+      throw new Error('unexpected table: ' + table);
+    });
+
+    const result = await sendMagicLinkAction('  Trainer@Example.COM  ');
+    expect(result).toEqual({ ok: true });
+    expect(mockEnsureAuthUserForEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      'trainer@example.com',
+    );
+    expect(mockGenerateLink).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'trainer@example.com' }),
+    );
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'trainer@example.com' }),
+    );
+  });
+
+  it('returns server_error when ensureAuthUserForEmail fails without minting a link', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'admins') return adminsRow(null);
+      if (table === 'trainers') return trainersRow({ status: 'onboarding' });
+      throw new Error('unexpected table: ' + table);
+    });
+    mockEnsureAuthUserForEmail.mockResolvedValueOnce({
+      ok: false,
+      message: 'database down',
+    });
+
+    const result = await sendMagicLinkAction('trainer@example.com');
+    expect(result).toEqual({ ok: false, reason: 'server_error' });
+    expect(mockGenerateLink).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it('includes intent=reset in callback URL when requested', async () => {
@@ -124,6 +181,9 @@ describe('sendMagicLinkAction', () => {
       email: 'trainer@example.com',
       options: { redirectTo: 'http://localhost:3000/auth/callback?intent=reset' },
     });
+    const html = mockSendEmail.mock.calls[0][0].html as string;
+    expect(html).toContain('token_hash=tok-hash-123');
+    expect(html).toContain('intent=reset');
   });
 
   it('returns send_failed when email delivery fails', async () => {

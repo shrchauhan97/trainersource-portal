@@ -467,11 +467,19 @@ export function onboardingCompleteAdminEmail(input: {
   trainerName: string;
   trainerEmail: string;
   city: string;
+  hasAttachment: boolean;
+  signedAgreementPath?: string;
 }) {
   const subject = 'New Trainer Status Update - Onboarding Complete';
   const trainerName = htmlEscape(input.trainerName);
   const trainerEmail = htmlEscape(input.trainerEmail);
   const city = htmlEscape(input.city);
+
+  const agreementNote = input.hasAttachment
+    ? `The trainer&apos;s signed agreement is attached to this email for your review.`
+    : input.signedAgreementPath
+      ? `We couldn&apos;t attach the signed agreement automatically. Retrieve it from the admin portal (storage path: <strong>${htmlEscape(input.signedAgreementPath)}</strong>).`
+      : `No signed agreement path was recorded. Review the trainer in the admin portal before activation.`;
 
   const body = `
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#2D4F67;">
@@ -482,7 +490,7 @@ export function onboardingCompleteAdminEmail(input: {
       <tr><td style="padding:6px 16px 6px 0;font-size:12px;color:#41627b;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;">City</td><td style="padding:6px 0;font-size:14px;color:#173041;">${city}</td></tr>
     </table>
     <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#41627b;">
-      The trainer&apos;s signed agreement is attached to this email for your review.
+      ${agreementNote}
     </p>
   `;
 

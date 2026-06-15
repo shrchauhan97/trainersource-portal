@@ -1,5 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { UPLOAD_SPECS, validateUpload, type UploadKind } from './uploadValidation';
 
 const BUCKET = 'onboarding-uploads';
@@ -60,8 +61,8 @@ export async function getSignedUploadUrl(path: string, expiresIn = 60 * 60): Pro
   return data?.signedUrl ?? null;
 }
 
-// Downloads an uploaded file from storage as a Buffer. Used for attaching
-// files to emails (e.g. signed agreement sent to admins on onboarding completion).
+// Downloads an uploaded file from storage as a Buffer under the trainer's
+// session (storage RLS applies).
 export async function downloadOnboardingFile(path: string): Promise<Buffer | null> {
   if (!path) return null;
   const supabase = await createClient();
@@ -72,5 +73,32 @@ export async function downloadOnboardingFile(path: string): Promise<Buffer | nul
     return null;
   }
 
-  return Buffer.from(await data.arrayBuffer());
+  try {
+    return Buffer.from(await data.arrayBuffer());
+  } catch (err) {
+    console.error('[storage] download arrayBuffer failed:', { path, err });
+    return null;
+  }
+}
+
+// Service-role download for server-side notifications that already escalate
+// privileges (e.g. admin emails on onboarding completion). Avoids storage
+// RLS/JWT case mismatches blocking the attachment at go-live time.
+export async function downloadOnboardingFileWithService(path: string): Promise<Buffer | null> {
+  if (!path) return null;
+  const supabase = createServiceClient();
+
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET).download(path);
+
+    if (error || !data) {
+      console.error('[storage] service download failed:', { path, error });
+      return null;
+    }
+
+    return Buffer.from(await data.arrayBuffer());
+  } catch (err) {
+    console.error('[storage] service download threw:', { path, err });
+    return null;
+  }
 }

@@ -35,6 +35,14 @@ describe('ensureAuthUserForEmail', () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it('does not treat non-duplicate 422 as ok', async () => {
+    mockCreateUser.mockResolvedValueOnce({
+      error: { message: 'email_address_invalid', status: 422, code: 'email_address_invalid' },
+    });
+    const result = await ensureAuthUserForEmail(service, 'trainer@example.com');
+    expect(result).toEqual({ ok: false, message: 'email_address_invalid' });
+  });
+
   it('surfaces unexpected createUser errors', async () => {
     mockCreateUser.mockResolvedValueOnce({
       error: { message: 'database down', status: 500 },
