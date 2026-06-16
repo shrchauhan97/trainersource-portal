@@ -24,7 +24,7 @@ const checkErrorMessages: Record<
 > = {
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
-  rate_limited: 'Too many attempts. Please wait a minute and try again.',
+  rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
   invalid: 'Enter a valid email address.',
   server_error: 'Something went wrong. Please try again in a moment.',
 };
@@ -35,7 +35,7 @@ const magicLinkErrorMessages: Record<
 > = {
   not_authorized: 'Your email is not authorized to access TrainerSource.',
   suspended: 'Your account has been suspended. Contact support to restore access.',
-  rate_limited: 'Too many attempts. Please wait a minute and try again.',
+  rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
   invalid: 'Enter a valid email address.',
   server_error: 'Something went wrong. Please try again in a moment.',
   send_failed: "We couldn't send the magic link. Please try again in a moment.",
