@@ -45,10 +45,19 @@ export type SendMagicLinkResult =
 const BUCKET = new Map<string, { count: number; resetAt: number }>();
 const LIMIT = 10;
 const WINDOW_MS = 60_000;
+// Per-email cap on magic-link sends (SHA-210 / PR #57 moved off GoTrue's
+// built-in per-address throttle). Stricter than the IP bucket — stops targeted
+// inbox spam from a single client without blocking normal resend (1–2 retries).
+const MAGIC_EMAIL_LIMIT = 3;
+const MAGIC_EMAIL_WINDOW_MS = 15 * 60_000;
 const MAX_BUCKET_KEYS = 5_000;
 let unknownIpWarned = false;
 
-function rateLimit(key: string): boolean {
+type RateLimitOpts = { limit?: number; windowMs?: number };
+
+function rateLimit(key: string, opts?: RateLimitOpts): boolean {
+  const limit = opts?.limit ?? LIMIT;
+  const windowMs = opts?.windowMs ?? WINDOW_MS;
   const now = Date.now();
   if (BUCKET.size > MAX_BUCKET_KEYS) {
     for (const [k, v] of BUCKET) {
@@ -58,10 +67,10 @@ function rateLimit(key: string): boolean {
   }
   const entry = BUCKET.get(key);
   if (!entry || entry.resetAt < now) {
-    BUCKET.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    BUCKET.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
-  if (entry.count >= LIMIT) return false;
+  if (entry.count >= limit) return false;
   entry.count += 1;
   return true;
 }
@@ -197,6 +206,15 @@ export async function sendMagicLinkAction(
   }
 
   if (!(await rateLimitOrReject('magic'))) {
+    return { ok: false, reason: 'rate_limited' };
+  }
+
+  if (
+    !rateLimit(`magic-email:${email}`, {
+      limit: MAGIC_EMAIL_LIMIT,
+      windowMs: MAGIC_EMAIL_WINDOW_MS,
+    })
+  ) {
     return { ok: false, reason: 'rate_limited' };
   }
 

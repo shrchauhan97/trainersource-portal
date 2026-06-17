@@ -105,21 +105,21 @@ describe('sendMagicLinkAction', () => {
       throw new Error('unexpected table: ' + table);
     });
 
-    const result = await sendMagicLinkAction('trainer@example.com');
+    const result = await sendMagicLinkAction('onboarding-trainer@example.com');
     expect(result).toEqual({ ok: true });
     expect(mockEnsureAuthUserForEmail).toHaveBeenCalledBefore(mockGenerateLink);
     expect(mockEnsureAuthUserForEmail).toHaveBeenCalledWith(
       expect.anything(),
-      'trainer@example.com',
+      'onboarding-trainer@example.com',
     );
     expect(mockGenerateLink).toHaveBeenCalledWith({
       type: 'magiclink',
-      email: 'trainer@example.com',
+      email: 'onboarding-trainer@example.com',
       options: { redirectTo: 'http://localhost:3000/auth/callback' },
     });
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: 'trainer@example.com',
+        to: 'onboarding-trainer@example.com',
         subject: 'Sign in to TrainerSource',
       }),
     );
@@ -136,17 +136,17 @@ describe('sendMagicLinkAction', () => {
       throw new Error('unexpected table: ' + table);
     });
 
-    const result = await sendMagicLinkAction('  Trainer@Example.COM  ');
+    const result = await sendMagicLinkAction('  Trainer-B@Example.COM  ');
     expect(result).toEqual({ ok: true });
     expect(mockEnsureAuthUserForEmail).toHaveBeenCalledWith(
       expect.anything(),
-      'trainer@example.com',
+      'trainer-b@example.com',
     );
     expect(mockGenerateLink).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'trainer@example.com' }),
+      expect.objectContaining({ email: 'trainer-b@example.com' }),
     );
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'trainer@example.com' }),
+      expect.objectContaining({ to: 'trainer-b@example.com' }),
     );
   });
 
@@ -161,7 +161,7 @@ describe('sendMagicLinkAction', () => {
       message: 'database down',
     });
 
-    const result = await sendMagicLinkAction('trainer@example.com');
+    const result = await sendMagicLinkAction('ensure-fail-trainer@example.com');
     expect(result).toEqual({ ok: false, reason: 'server_error' });
     expect(mockGenerateLink).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
@@ -174,11 +174,11 @@ describe('sendMagicLinkAction', () => {
       throw new Error('unexpected table: ' + table);
     });
 
-    const result = await sendMagicLinkAction('trainer@example.com', 'reset');
+    const result = await sendMagicLinkAction('reset-trainer@example.com', 'reset');
     expect(result).toEqual({ ok: true });
     expect(mockGenerateLink).toHaveBeenCalledWith({
       type: 'magiclink',
-      email: 'trainer@example.com',
+      email: 'reset-trainer@example.com',
       options: { redirectTo: 'http://localhost:3000/auth/callback?intent=reset' },
     });
     const html = mockSendEmail.mock.calls[0][0].html as string;
@@ -195,5 +195,166 @@ describe('sendMagicLinkAction', () => {
 
     const result = await sendMagicLinkAction('admin@example.com');
     expect(result).toEqual({ ok: false, reason: 'send_failed' });
+  });
+});
+
+function trainerAllowedFrom() {
+  return (table: string) => {
+    if (table === 'admins') return adminsRow(null);
+    if (table === 'trainers') return trainersRow({ status: 'onboarding' });
+    throw new Error('unexpected table: ' + table);
+  };
+}
+
+// Isolated module load so the in-memory BUCKET starts empty.
+describe('sendMagicLinkAction — per-email rate limit', () => {
+  it('rejects with rate_limited once same email exceeds per-email LIMIT', async () => {
+    vi.resetModules();
+    const freshFrom = vi.fn(trainerAllowedFrom());
+    const freshGenerateLink = vi.fn().mockResolvedValue({
+      data: { properties: { hashed_token: 'tok-hash-123' } },
+      error: null,
+    });
+    const freshSendEmail = vi.fn().mockResolvedValue({ ok: true, id: 'email-1' });
+    const freshEnsure = vi.fn().mockResolvedValue({ ok: true });
+
+    vi.doMock('@sentry/nextjs', () => ({
+      captureMessage: vi.fn(),
+      captureException: vi.fn(),
+    }));
+    vi.doMock('@/lib/auth-users', () => ({
+      ensureAuthUserForEmail: (...args: unknown[]) => freshEnsure(...args),
+    }));
+    vi.doMock('@/lib/supabase/service', () => ({
+      createServiceClient: () => ({
+        from: freshFrom,
+        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        auth: {
+          admin: {
+            createUser: vi.fn().mockResolvedValue({ error: null }),
+            generateLink: freshGenerateLink,
+          },
+        },
+      }),
+    }));
+    vi.doMock('@/lib/email', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/lib/email')>();
+      return { ...actual, sendEmail: (...args: unknown[]) => freshSendEmail(...args) };
+    });
+    vi.doMock('next/headers', () => ({
+      headers: () =>
+        Promise.resolve({
+          get: (name: string) => (name === 'x-forwarded-for' ? '198.51.100.99' : null),
+        }),
+    }));
+
+    const { sendMagicLinkAction: fresh } = await import('@/app/login/actions');
+    const target = 'throttle-target@example.com';
+
+    const results = [];
+    for (let i = 0; i < 4; i++) {
+      results.push(await fresh(target));
+    }
+
+    expect(results.filter((r) => r.ok)).toHaveLength(3);
+    expect(results.filter((r) => !r.ok && r.reason === 'rate_limited')).toHaveLength(1);
+    expect(freshGenerateLink).toHaveBeenCalledTimes(3);
+    expect(freshSendEmail).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not block different enrolled emails via the per-email bucket', async () => {
+    vi.resetModules();
+    const freshFrom = vi.fn(trainerAllowedFrom());
+    const freshGenerateLink = vi.fn().mockResolvedValue({
+      data: { properties: { hashed_token: 'tok-hash-123' } },
+      error: null,
+    });
+    const freshSendEmail = vi.fn().mockResolvedValue({ ok: true, id: 'email-1' });
+
+    vi.doMock('@sentry/nextjs', () => ({
+      captureMessage: vi.fn(),
+      captureException: vi.fn(),
+    }));
+    vi.doMock('@/lib/auth-users', () => ({
+      ensureAuthUserForEmail: vi.fn().mockResolvedValue({ ok: true }),
+    }));
+    vi.doMock('@/lib/supabase/service', () => ({
+      createServiceClient: () => ({
+        from: freshFrom,
+        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        auth: {
+          admin: {
+            createUser: vi.fn().mockResolvedValue({ error: null }),
+            generateLink: freshGenerateLink,
+          },
+        },
+      }),
+    }));
+    vi.doMock('@/lib/email', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/lib/email')>();
+      return { ...actual, sendEmail: (...args: unknown[]) => freshSendEmail(...args) };
+    });
+    vi.doMock('next/headers', () => ({
+      headers: () =>
+        Promise.resolve({
+          get: (name: string) => (name === 'x-forwarded-for' ? '198.51.100.99' : null),
+        }),
+    }));
+
+    const { sendMagicLinkAction: fresh } = await import('@/app/login/actions');
+
+    for (let i = 0; i < 3; i++) {
+      const result = await fresh(`distinct-trainer-${i}@example.com`);
+      expect(result).toEqual({ ok: true });
+    }
+    expect(freshGenerateLink).toHaveBeenCalledTimes(3);
+  });
+
+  it('shares per-email bucket across mixed-case variants', async () => {
+    vi.resetModules();
+    const freshFrom = vi.fn(trainerAllowedFrom());
+    const freshGenerateLink = vi.fn().mockResolvedValue({
+      data: { properties: { hashed_token: 'tok-hash-123' } },
+      error: null,
+    });
+    const freshSendEmail = vi.fn().mockResolvedValue({ ok: true, id: 'email-1' });
+
+    vi.doMock('@sentry/nextjs', () => ({
+      captureMessage: vi.fn(),
+      captureException: vi.fn(),
+    }));
+    vi.doMock('@/lib/auth-users', () => ({
+      ensureAuthUserForEmail: vi.fn().mockResolvedValue({ ok: true }),
+    }));
+    vi.doMock('@/lib/supabase/service', () => ({
+      createServiceClient: () => ({
+        from: freshFrom,
+        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        auth: {
+          admin: {
+            createUser: vi.fn().mockResolvedValue({ error: null }),
+            generateLink: freshGenerateLink,
+          },
+        },
+      }),
+    }));
+    vi.doMock('@/lib/email', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/lib/email')>();
+      return { ...actual, sendEmail: (...args: unknown[]) => freshSendEmail(...args) };
+    });
+    vi.doMock('next/headers', () => ({
+      headers: () =>
+        Promise.resolve({
+          get: (name: string) => (name === 'x-forwarded-for' ? '198.51.100.99' : null),
+        }),
+    }));
+
+    const { sendMagicLinkAction: fresh } = await import('@/app/login/actions');
+
+    for (let i = 0; i < 3; i++) {
+      expect(await fresh('Case-Mix@Example.COM')).toEqual({ ok: true });
+    }
+    expect(await fresh('case-mix@example.com')).toEqual({ ok: false, reason: 'rate_limited' });
+    expect(freshGenerateLink).toHaveBeenCalledTimes(3);
   });
 });

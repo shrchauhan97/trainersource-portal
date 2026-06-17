@@ -202,3 +202,9 @@ ALTER TABLE bc_customer_links ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY bc_customer_links_service_role ON bc_customer_links
   FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- === bc_customer_link_audit RLS ===
+ALTER TABLE bc_customer_link_audit ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY bc_customer_link_audit_service_role ON bc_customer_link_audit
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
