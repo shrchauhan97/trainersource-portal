@@ -342,9 +342,9 @@ CREATE INDEX IF NOT EXISTS idx_access_codes_trainer_issued
     ON access_codes (trainer_id, issued_via);
 
 -- === bc_customer_links (Peptide Concierge v2 P5 — reorder concierge) ===
--- Telegram <-> BigCommerce customer link, used by the reorder-concierge cron
--- to nudge customers who haven't reordered in a while. Bot writes via the
--- service role key (bypasses RLS).
+-- Telegram <-> BigCommerce customer link, used by the reorder Mini App and
+-- reorder-concierge cron. Written by /link-telegram (portal) via
+-- link_telegram_to_bc_customer RPC; read by bot + GET /api/reorder/*.
 --
 -- Column semantics:
 --   last_reminder_at   — timestamp of most recent re-engagement DM; NULL = never reminded.
@@ -368,8 +368,32 @@ CREATE TABLE IF NOT EXISTS bc_customer_links (
 CREATE INDEX IF NOT EXISTS bc_customer_links_bc_customer_idx
   ON bc_customer_links (bc_customer_id);
 
--- bc_customer_links_reengage_idx dropped 2026-05-21 (unused; see
--- supabase/migrations/2026-05-21-drop-unused-indexes.sql).
+CREATE UNIQUE INDEX IF NOT EXISTS bc_customer_links_bc_customer_id_unique
+  ON bc_customer_links (bc_customer_id);
+
+-- bc_customer_links_reengage_idx may still exist in prod; not dropped here.
+
+-- === bc_customer_link_audit (P5 /link-telegram) ===
+-- Append-only history for customer Telegram links. Service-role-only by RLS.
+CREATE TABLE IF NOT EXISTS bc_customer_link_audit (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  telegram_user_id   BIGINT NOT NULL,
+  old_bc_customer_id BIGINT,
+  new_bc_customer_id BIGINT,
+  action             TEXT NOT NULL
+    CHECK (action IN ('create', 'noop', 'conflict_blocked')),
+  linked_via         TEXT,
+  changed_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_address         INET,
+  user_agent         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_bc_customer_link_audit_tg_user
+  ON bc_customer_link_audit (telegram_user_id, changed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_bc_customer_link_audit_bc_customer
+  ON bc_customer_link_audit (new_bc_customer_id, changed_at DESC)
+  WHERE new_bc_customer_id IS NOT NULL;
 
 -- === Lifecycle Removal (2026-04-23) ===
 -- Mirrors supabase/migrations/2026-04-23-lifecycle.sql — kept in sync so a fresh
