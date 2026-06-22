@@ -15,11 +15,21 @@ function getLoginUrl(request: NextRequest, error?: string) {
   return loginUrl;
 }
 
-export async function GET(request: NextRequest) {
-  const token_hash = request.nextUrl.searchParams.get('token_hash');
-  const type = request.nextUrl.searchParams.get('type');
-  const code = request.nextUrl.searchParams.get('code');
-  const intent = request.nextUrl.searchParams.get('intent');
+type AuthCallbackParams = {
+  token_hash: string | null;
+  type: string | null;
+  code: string | null;
+  intent: string | null;
+};
+
+function readFormField(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function handleAuthCallback(request: NextRequest, params: AuthCallbackParams) {
+  const { token_hash, type, code, intent } = params;
 
   const supabase = await createClient();
 
@@ -133,4 +143,24 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.redirect(new URL(next, request.url));
+}
+
+export async function GET(request: NextRequest) {
+  return handleAuthCallback(request, {
+    token_hash: request.nextUrl.searchParams.get('token_hash'),
+    type: request.nextUrl.searchParams.get('type'),
+    code: request.nextUrl.searchParams.get('code'),
+    intent: request.nextUrl.searchParams.get('intent'),
+  });
+}
+
+/** Redeems magic-link tokens submitted from /auth/confirm (POST avoids mail-scanner GET prefetch). */
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  return handleAuthCallback(request, {
+    token_hash: readFormField(formData.get('token_hash')),
+    type: readFormField(formData.get('type')),
+    code: null,
+    intent: readFormField(formData.get('intent')),
+  });
 }

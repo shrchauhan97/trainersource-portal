@@ -4,9 +4,13 @@ import * as Sentry from '@sentry/nextjs';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import {
+  buildMagicLinkCallbackRedirectTo,
+  buildMagicLinkConfirmUrl,
+} from '@/lib/auth-magic-link-urls';
 import { ensureAuthUserForEmail } from '@/lib/auth-users';
 import { getUserRole } from '@/lib/auth';
-import { getSiteUrl, magicLinkLoginEmail, sendEmail } from '@/lib/email';
+import { magicLinkLoginEmail, sendEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 
@@ -48,7 +52,7 @@ const WINDOW_MS = 60_000;
 // Per-email cap on magic-link sends (SHA-210 / PR #57 moved off GoTrue's
 // built-in per-address throttle). Stricter than the IP bucket — stops targeted
 // inbox spam from a single client without blocking normal resend (1–2 retries).
-const MAGIC_EMAIL_LIMIT = 3;
+const MAGIC_EMAIL_LIMIT = 6;
 const MAGIC_EMAIL_WINDOW_MS = 15 * 60_000;
 const MAX_BUCKET_KEYS = 5_000;
 let unknownIpWarned = false;
@@ -186,16 +190,6 @@ export async function checkEmailAllowed(rawEmail: string): Promise<CheckEmailRes
   return resolveEmailAccess(email);
 }
 
-function buildMagicLinkCallbackUrl(tokenHash: string, intent?: 'reset'): string {
-  const url = new URL('/auth/callback', getSiteUrl());
-  url.searchParams.set('token_hash', tokenHash);
-  url.searchParams.set('type', 'magiclink');
-  if (intent === 'reset') {
-    url.searchParams.set('intent', 'reset');
-  }
-  return url.toString();
-}
-
 export async function sendMagicLinkAction(
   rawEmail: string,
   intent?: 'reset',
@@ -234,16 +228,13 @@ export async function sendMagicLinkAction(
   }
 
   // redirectTo satisfies Supabase redirect allowlist validation; the email
-  // link is built separately from hashed_token via buildMagicLinkCallbackUrl.
-  const redirectTo = new URL('/auth/callback', getSiteUrl());
-  if (intent === 'reset') {
-    redirectTo.searchParams.set('intent', 'reset');
-  }
+  // link is built separately from hashed_token via buildMagicLinkConfirmUrl.
+  const redirectTo = buildMagicLinkCallbackRedirectTo(intent);
 
   const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: { redirectTo: redirectTo.toString() },
+    options: { redirectTo },
   });
 
   const tokenHash = linkData?.properties?.hashed_token;
@@ -260,7 +251,7 @@ export async function sendMagicLinkAction(
     return { ok: false, reason: 'server_error' };
   }
 
-  const signInUrl = buildMagicLinkCallbackUrl(tokenHash, intent);
+  const signInUrl = buildMagicLinkConfirmUrl(tokenHash, intent);
   const { subject, html } = magicLinkLoginEmail({ signInUrl, isReset: intent === 'reset' });
   const sendResult = await sendEmail({ to: email, subject, html });
 

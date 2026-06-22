@@ -47,7 +47,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   };
 });
 
-import { GET } from '@/app/auth/callback/route';
+import { GET, POST } from '@/app/auth/callback/route';
 
 function buildRequest(query: Record<string, string>): NextRequest {
   const url = new URL('http://localhost:3000/auth/callback');
@@ -169,5 +169,23 @@ describe('GET /auth/callback', () => {
     const res = await GET(buildRequest({ token_hash: 'hash-abc', type: 'magiclink' }));
     expect(mockTrainerEq).toHaveBeenCalledWith('email', 'trainer@example.com');
     expect(await getLocation(res)).toContain('/onboarding');
+  });
+});
+
+describe('POST /auth/callback', () => {
+  it('verifyOtp from form body routes trainer to dashboard when hasPwd', async () => {
+    const form = new FormData();
+    form.set('token_hash', 'hash-abc');
+    form.set('type', 'magiclink');
+
+    const res = await POST(
+      new NextRequest('http://localhost:3000/auth/callback', { method: 'POST', body: form }),
+    );
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      token_hash: 'hash-abc',
+      type: 'magiclink',
+    });
+    expect(await getLocation(res)).toContain('/dashboard');
   });
 });
