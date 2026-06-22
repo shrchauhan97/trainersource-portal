@@ -15,11 +15,29 @@ function getLoginUrl(request: NextRequest, error?: string) {
   return loginUrl;
 }
 
-export async function GET(request: NextRequest) {
-  const token_hash = request.nextUrl.searchParams.get('token_hash');
-  const type = request.nextUrl.searchParams.get('type');
-  const code = request.nextUrl.searchParams.get('code');
-  const intent = request.nextUrl.searchParams.get('intent');
+function authRedirect(request: NextRequest, url: URL, status: number) {
+  return NextResponse.redirect(url, status);
+}
+
+type AuthCallbackParams = {
+  token_hash: string | null;
+  type: string | null;
+  code: string | null;
+  intent: string | null;
+};
+
+function readFormField(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function handleAuthCallback(
+  request: NextRequest,
+  params: AuthCallbackParams,
+  redirectStatus = 307,
+) {
+  const { token_hash, type, code, intent } = params;
 
   const supabase = await createClient();
 
@@ -37,7 +55,7 @@ export async function GET(request: NextRequest) {
         level: 'warning',
         extra: { code: error.code, message: error.message },
       });
-      return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+      return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
     }
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -50,12 +68,12 @@ export async function GET(request: NextRequest) {
         level: 'warning',
         extra: { code: error.code, message: error.message },
       });
-      return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+      return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
     }
   } else {
     console.error('[auth/callback] missing token_hash/type and code');
     Sentry.captureMessage('auth/callback: missing auth params', { level: 'warning' });
-    return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+    return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
   }
 
   const {
@@ -65,25 +83,25 @@ export async function GET(request: NextRequest) {
 
   if (userError || !user?.email) {
     await supabase.auth.signOut();
-    return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+    return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
   }
 
   const sessionEmail = normalizeSessionEmail(user.email);
   if (!sessionEmail) {
     await supabase.auth.signOut();
-    return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+    return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
   }
 
   const role = await getUserRole(sessionEmail);
 
   if (role === 'suspended') {
     await supabase.auth.signOut();
-    return NextResponse.redirect(getLoginUrl(request, 'suspended'));
+    return authRedirect(request, getLoginUrl(request, 'suspended'), redirectStatus);
   }
 
   if (role !== 'admin' && role !== 'trainer') {
     await supabase.auth.signOut();
-    return NextResponse.redirect(getLoginUrl(request, 'not_authorized'));
+    return authRedirect(request, getLoginUrl(request, 'not_authorized'), redirectStatus);
   }
 
   let next = '/dashboard';
@@ -108,7 +126,11 @@ export async function GET(request: NextRequest) {
   // Reset flow always goes through set-password; first-time logins (no
   // password set yet) likewise. Password-bearing returning users skip.
   if (intent === 'reset') {
-    return NextResponse.redirect(new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url));
+    return authRedirect(
+      request,
+      new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url),
+      redirectStatus,
+    );
   }
 
   const { data: hasPwd, error: rpcError } = await supabase.rpc('user_has_password', { uid: user.id });
@@ -122,15 +144,45 @@ export async function GET(request: NextRequest) {
       level: 'error',
       extra: { uid: user.id, code: rpcError.code, message: rpcError.message },
     });
-    return NextResponse.redirect(getLoginUrl(request, 'auth_callback_failed'));
+    return authRedirect(request, getLoginUrl(request, 'auth_callback_failed'), redirectStatus);
   }
 
   // hasPwd is strictly true | false here. `=== false` ensures any future
   // ternary value doesn't silently fold into the reset branch (Wave-7
   // taught us the cost of treating "unknown" as a happy-path signal).
   if (hasPwd === false) {
-    return NextResponse.redirect(new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url));
+    return authRedirect(
+      request,
+      new URL(`/account/set-password?next=${encodeURIComponent(next)}`, request.url),
+      redirectStatus,
+    );
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return authRedirect(request, new URL(next, request.url), redirectStatus);
+}
+
+export async function GET(request: NextRequest) {
+  return handleAuthCallback(request, {
+    token_hash: request.nextUrl.searchParams.get('token_hash'),
+    type: request.nextUrl.searchParams.get('type'),
+    code: request.nextUrl.searchParams.get('code'),
+    intent: request.nextUrl.searchParams.get('intent'),
+  });
+}
+
+/** Redeems magic-link tokens submitted from /auth/confirm (POST avoids mail-scanner GET prefetch). */
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  // 303 See Other — browser must follow Location with GET (PRG). 307 would
+  // re-POST to /onboarding / /dashboard and trigger resubmission prompts.
+  return handleAuthCallback(
+    request,
+    {
+      token_hash: readFormField(formData.get('token_hash')),
+      type: readFormField(formData.get('type')),
+      code: null,
+      intent: readFormField(formData.get('intent')),
+    },
+    303,
+  );
 }

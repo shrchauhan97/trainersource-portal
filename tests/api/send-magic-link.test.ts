@@ -125,7 +125,7 @@ describe('sendMagicLinkAction', () => {
     );
     const html = mockSendEmail.mock.calls[0][0].html as string;
     expect(html).toContain(
-      'http://localhost:3000/auth/callback?token_hash=tok-hash-123&amp;type=magiclink',
+      'http://localhost:3000/auth/confirm?token_hash=tok-hash-123&amp;type=magiclink',
     );
   });
 
@@ -167,7 +167,7 @@ describe('sendMagicLinkAction', () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
-  it('includes intent=reset in callback URL when requested', async () => {
+  it('includes intent=reset in confirm URL when requested', async () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'admins') return adminsRow(null);
       if (table === 'trainers') return trainersRow({ status: 'active' });
@@ -252,14 +252,14 @@ describe('sendMagicLinkAction — per-email rate limit', () => {
     const target = 'throttle-target@example.com';
 
     const results = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       results.push(await fresh(target));
     }
 
-    expect(results.filter((r) => r.ok)).toHaveLength(3);
+    expect(results.filter((r) => r.ok)).toHaveLength(6);
     expect(results.filter((r) => !r.ok && r.reason === 'rate_limited')).toHaveLength(1);
-    expect(freshGenerateLink).toHaveBeenCalledTimes(3);
-    expect(freshSendEmail).toHaveBeenCalledTimes(3);
+    expect(freshGenerateLink).toHaveBeenCalledTimes(6);
+    expect(freshSendEmail).toHaveBeenCalledTimes(6);
   });
 
   it('does not block different enrolled emails via the per-email bucket', async () => {
@@ -351,10 +351,10 @@ describe('sendMagicLinkAction — per-email rate limit', () => {
 
     const { sendMagicLinkAction: fresh } = await import('@/app/login/actions');
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 6; i++) {
       expect(await fresh('Case-Mix@Example.COM')).toEqual({ ok: true });
     }
     expect(await fresh('case-mix@example.com')).toEqual({ ok: false, reason: 'rate_limited' });
-    expect(freshGenerateLink).toHaveBeenCalledTimes(3);
+    expect(freshGenerateLink).toHaveBeenCalledTimes(6);
   });
 });

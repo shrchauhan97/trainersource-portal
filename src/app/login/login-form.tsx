@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-
 import {
   checkEmailAllowed,
   sendMagicLinkAction,
@@ -29,6 +29,10 @@ const checkErrorMessages: Record<
   server_error: 'Something went wrong. Please try again in a moment.',
 };
 
+const magicLinkSentMessage = 'Check your email for a link to finish signing in.';
+
+const magicLinkResetMessage = 'Check your email for a link to reset your password.';
+
 const magicLinkErrorMessages: Record<
   NonNullable<Exclude<SendMagicLinkResult, { ok: true }>['reason']>,
   string
@@ -48,6 +52,7 @@ type LoginFormProps = {
 };
 
 export default function LoginForm({ errorKey }: LoginFormProps) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
@@ -56,11 +61,12 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
   const [info, setInfo] = useState<string | null>(null);
   const [magicSent, setMagicSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dismissedCallbackError, setDismissedCallbackError] = useState(false);
 
   const callbackError = useMemo(() => {
-    if (!errorKey) return null;
+    if (!errorKey || dismissedCallbackError) return null;
     return callbackErrorMessages[errorKey] ?? 'Something went wrong. Please try again.';
-  }, [errorKey]);
+  }, [errorKey, dismissedCallbackError]);
 
   function resetMessages() {
     setError(null);
@@ -90,6 +96,7 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
       if (result.hasPassword) {
         setStep('password');
       } else {
+        setStep('password');
         await sendMagicLink(normalizedEmail);
       }
     } catch {
@@ -109,11 +116,9 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
         return;
       }
       setMagicSent(true);
-      setInfo(
-        intent === 'reset'
-          ? 'Check your email for a link to reset your password.'
-          : 'Check your email for a link to finish signing in.',
-      );
+      setDismissedCallbackError(true);
+      router.replace('/login', { scroll: false });
+      setInfo(intent === 'reset' ? magicLinkResetMessage : magicLinkSentMessage);
     } catch {
       setError('Something went wrong. Please try again in a moment.');
     } finally {
@@ -273,6 +278,7 @@ export default function LoginForm({ errorKey }: LoginFormProps) {
                 setPassword('');
                 setHasPassword(false);
                 setMagicSent(false);
+                setDismissedCallbackError(false);
                 resetMessages();
               }}
               className="text-xs font-medium uppercase tracking-[0.18em] text-clinical-slate/50 hover:text-clinical-slate"

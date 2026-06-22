@@ -47,7 +47,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   };
 });
 
-import { GET } from '@/app/auth/callback/route';
+import { GET, POST } from '@/app/auth/callback/route';
 
 function buildRequest(query: Record<string, string>): NextRequest {
   const url = new URL('http://localhost:3000/auth/callback');
@@ -84,6 +84,7 @@ describe('GET /auth/callback', () => {
     const res = await GET(
       buildRequest({ token_hash: 'hash-abc', type: 'magiclink' }),
     );
+    expect(res.status).toBe(307);
     expect(mockVerifyOtp).toHaveBeenCalledWith({
       token_hash: 'hash-abc',
       type: 'magiclink',
@@ -169,5 +170,56 @@ describe('GET /auth/callback', () => {
     const res = await GET(buildRequest({ token_hash: 'hash-abc', type: 'magiclink' }));
     expect(mockTrainerEq).toHaveBeenCalledWith('email', 'trainer@example.com');
     expect(await getLocation(res)).toContain('/onboarding');
+  });
+});
+
+describe('POST /auth/callback', () => {
+  it('verifyOtp from form body routes trainer to dashboard when hasPwd', async () => {
+    const form = new FormData();
+    form.set('token_hash', 'hash-abc');
+    form.set('type', 'magiclink');
+
+    const res = await POST(
+      new NextRequest('http://localhost:3000/auth/callback', { method: 'POST', body: form }),
+    );
+
+    expect(res.status).toBe(303);
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      token_hash: 'hash-abc',
+      type: 'magiclink',
+    });
+    expect(await getLocation(res)).toContain('/dashboard');
+  });
+
+  it('returns 303 on verifyOtp failure so browser GETs login (not re-POST)', async () => {
+    mockVerifyOtp.mockResolvedValueOnce({ error: { message: 'expired' } });
+    const form = new FormData();
+    form.set('token_hash', 'hash-abc');
+    form.set('type', 'magiclink');
+
+    const res = await POST(
+      new NextRequest('http://localhost:3000/auth/callback', { method: 'POST', body: form }),
+    );
+
+    expect(res.status).toBe(303);
+    expect(await getLocation(res)).toContain('/login?error=auth_callback_failed');
+  });
+
+  it('returns 303 to set-password when hasPwd is false', async () => {
+    mockRpc.mockResolvedValueOnce({ data: false, error: null });
+    mockTrainerMaybeSingle.mockResolvedValueOnce({ data: { status: 'onboarding' }, error: null });
+
+    const form = new FormData();
+    form.set('token_hash', 'hash-abc');
+    form.set('type', 'magiclink');
+
+    const res = await POST(
+      new NextRequest('http://localhost:3000/auth/callback', { method: 'POST', body: form }),
+    );
+
+    expect(res.status).toBe(303);
+    const loc = await getLocation(res);
+    expect(loc).toContain('/account/set-password');
+    expect(loc).toContain('next=%2Fonboarding');
   });
 });
