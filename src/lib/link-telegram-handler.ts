@@ -7,6 +7,11 @@ import {
   resolveBcCustomerFromCookies,
 } from '@/lib/bc-current-customer';
 import { createServiceClient } from '@/lib/supabase/service';
+import {
+  cookieNames,
+  linkTelegramDebug,
+  linkTelegramDebugEnabled,
+} from '@/lib/link-telegram-debug';
 
 export const LINK_TELEGRAM_BOT_REDIRECT =
   'https://t.me/peptidebutlerbot?start=link_ok';
@@ -134,21 +139,51 @@ export async function handleLinkTelegramCallback(
     };
   }
 
-  const bcCustomer = await resolveBcCustomerFromCookies(cookieHeader, bcCfg);
+  const headerCookie = requestHeaders.get('cookie')?.trim() || null;
+  const nextCookie = cookieHeader?.trim() || null;
+  // #region agent log
+  linkTelegramDebug({
+    location: 'link-telegram-handler.ts:handleLinkTelegramCallback',
+    message: 'cookie sources',
+    hypothesisId: 'D',
+    data: {
+      headerCookieNames: cookieNames(headerCookie),
+      nextCookieNames: cookieNames(nextCookie),
+      usedSource: nextCookie ? 'cookies()' : headerCookie ? 'headers-only' : 'none',
+      headerHasShopSession: cookieNames(headerCookie).includes('SHOP_SESSION_TOKEN'),
+      nextHasShopSession: cookieNames(nextCookie).includes('SHOP_SESSION_TOKEN'),
+    },
+  });
+  // #endregion
+
+  const bcCustomer = await resolveBcCustomerFromCookies(nextCookie, bcCfg);
   if (!bcCustomer.ok) {
+    // #region agent log
+    linkTelegramDebug({
+      location: 'link-telegram-handler.ts:handleLinkTelegramCallback',
+      message: 'bc customer resolve failed',
+      hypothesisId: 'A',
+      data: { reason: bcCustomer.reason },
+    });
+    // #endregion
+    const debugSuffix = linkTelegramDebugEnabled()
+      ? ` (debug: ${bcCustomer.reason})`
+      : '';
     if (bcCustomer.reason === 'no_bc_session') {
       return {
         kind: 'error',
         title: 'Store login required',
         message:
-          'Please log into the Ultimate Peptides store first, then return here to link Telegram.',
+          'Please log into the Ultimate Peptides store first, then return here to link Telegram.' +
+          debugSuffix,
         status: 401,
       };
     }
     return {
       kind: 'error',
       title: 'Could not verify store session',
-      message: 'We could not confirm your store login. Please log in again and retry.',
+      message:
+        'We could not confirm your store login. Please log in again and retry.' + debugSuffix,
       status: 401,
     };
   }
