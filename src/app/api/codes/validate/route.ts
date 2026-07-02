@@ -221,7 +221,7 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Origin': responseOrigin,
     'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, ngrok-skip-browser-warning',
   };
 }
 

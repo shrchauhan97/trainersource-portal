@@ -19,7 +19,7 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Origin': responseOrigin,
     Vary: 'Origin',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, ngrok-skip-browser-warning',
   };
 }
 
