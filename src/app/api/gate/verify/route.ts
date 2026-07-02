@@ -85,7 +85,7 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Origin': responseOrigin,
     Vary: 'Origin',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Gate-Verify-Secret',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Gate-Verify-Secret, ngrok-skip-browser-warning',
   };
 }
 
